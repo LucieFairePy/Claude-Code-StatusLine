@@ -1,0 +1,13 @@
+# Windows
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+*.code-workspace
+
+# Backup files created by installer
+*.backup_*
+
+# Assets placeholder (add real screenshots)
+assets/.gitkeep
