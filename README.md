@@ -6,17 +6,14 @@
 
 ## What it looks like
 
-```
-  🤖 Claude Sonnet 4.6   │   ⚡ ####---- 58%   │   ⏳ reset 2h 15m
-  🧠 ######-- 72% (56k)
-```
+![Claude Code Statusline preview](assets/preview.png)
+
+The bar updates live with every message you send. When limits get critical:
 
 ```
   🤖 Claude Opus 4.7   │   ⚡ ##------ 28%   │   ⏳ reset 47m
   🧠 ##------ 22% (44k)   │   ⚠️  compact soon
 ```
-
-The bar updates live with every message you send.
 
 ---
 
