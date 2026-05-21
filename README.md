@@ -67,7 +67,7 @@ That's it. Restart Claude Code and the status bar will appear automatically.
 
    ```powershell
    git clone https://github.com/LucieFairePy/Claude-Code-StatusLine.git
-   cd claude-code-statusline
+   cd Claude-Code-StatusLine
    ```
 
 2. Run the installer:
@@ -95,7 +95,7 @@ The installer patches `~/.claude/settings.json` to register the wrapper:
 {
   "statusLine": {
     "type": "command",
-    "command": "powershell -NoProfile -NonInteractive -File \"C:\\Users\\YOU\\.claude\\statusline-wrapper.ps1\""
+    "command": "powershell -NoProfile -NonInteractive -File \"C:\\Users\\<you>\\.claude\\statusline-wrapper.ps1\""
   }
 }
 ```
@@ -110,7 +110,7 @@ All display logic lives in `~/.claude/statusline-command.sh`. Open it in any tex
 
 ```bash
 make_bar() {
-  local pct="$1" width=8   # <-- change 8 to any number
+  local pct="$1" width=8   # change 8 to any number
 ```
 
 ### Change color thresholds
@@ -118,22 +118,16 @@ make_bar() {
 ```bash
 bar_color() {
   local pct="$1"
-  if   [ "$pct" -ge 60 ]; then printf "\033[32m"   # green  threshold
-  elif [ "$pct" -ge 30 ]; then printf "\033[33m"   # yellow threshold
-  else                          printf "\033[31m"   # red
+  if   [ "$pct" -ge 60 ]; then printf "\033[32m"
+  elif [ "$pct" -ge 30 ]; then printf "\033[33m"
+  else                          printf "\033[31m"
 ```
 
 ### Always show weekly usage
 
-Remove the `if [ "$week_used_int" -ge 80 ]` check at the bottom of the script:
+Remove the `if [ "$week_used_int" -ge 80 ]` guard at the bottom of the script:
 
 ```bash
-# Before (hidden unless >80%)
-if [ "$week_used_int" -ge 80 ]; then
-  ...
-fi
-
-# After (always visible)
 col=$(bar_color "$week_left")
 bar=$(make_bar "$week_left")
 line2="${line2}  ${SEP}  📅 ${col}${bar} ${week_left}%${RESET}"
@@ -141,7 +135,7 @@ line2="${line2}  ${SEP}  📅 ${col}${bar} ${week_left}%${RESET}"
 
 ### Hide the weekly indicator entirely
 
-Delete or comment out the entire weekly usage block at the bottom of the script.
+Delete the entire weekly usage block at the bottom of the script.
 
 ---
 
@@ -160,7 +154,7 @@ Delete or comment out the entire weekly usage block at the bottom of the script.
 - Or download from [jqlang.github.io/jq](https://jqlang.github.io/jq/)
 
 **All bars show `--------`**
-- This is normal on the very first message. The status bar populates once Claude Code sends its first JSON payload.
+- Normal on the very first message. The bar populates once Claude Code sends its first JSON payload.
 
 **PowerShell execution policy error**
 - Run: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
@@ -169,19 +163,11 @@ Delete or comment out the entire weekly usage block at the bottom of the script.
 
 ## Uninstall
 
-1. Open `~/.claude/settings.json` and remove the `statusLine` block.
-2. Delete `~/.claude/statusline-command.sh` and `~/.claude/statusline-wrapper.ps1`.
-3. Restart Claude Code.
+```powershell
+irm https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/uninstall.ps1 | iex
+```
 
----
-
-## Contributing
-
-Pull requests are welcome. To add a new indicator, edit `statusline-command.sh`:
-
-1. Extract the new field from `$input` using `jq`.
-2. Add it to `line1` or `line2`.
-3. Test by piping a sample JSON payload: `echo '{"model":...}' | bash statusline-command.sh`
+Or from a local clone: `.\uninstall.ps1`
 
 ---
 

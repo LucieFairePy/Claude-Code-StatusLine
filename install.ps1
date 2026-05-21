@@ -1,13 +1,4 @@
 #Requires -Version 5.1
-<#
-.SYNOPSIS
-    Installs Claude Code Statusline — a live status bar for Claude Code on Windows.
-.DESCRIPTION
-    Downloads and installs the statusline scripts to ~/.claude/ and patches
-    your Claude Code settings.json to activate the status bar automatically.
-.EXAMPLE
-    irm https://raw.githubusercontent.com/YOUR_USERNAME/claude-code-statusline/main/install.ps1 | iex
-#>
 
 $ErrorActionPreference = "Stop"
 
@@ -25,9 +16,6 @@ Write-Host "  Claude Code Statusline -- Installer" -ForegroundColor Magenta
 Write-Host "  =====================================" -ForegroundColor Magenta
 Write-Host ""
 
-# ── 0. Execution policy ───────────────────────────────────────────────────────
-# Fresh Windows blocks -File execution; set RemoteSigned so the wrapper can run.
-
 Write-Step "Setting execution policy..."
 try {
     $current = Get-ExecutionPolicy -Scope CurrentUser
@@ -38,10 +26,8 @@ try {
         Write-Ok "Execution policy already permissive ($current)."
     }
 } catch {
-    Write-Warn "Could not set execution policy. If the status bar does not work, run:`n    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned"
+    Write-Warn "Could not set execution policy. If the status bar does not work, run: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned"
 }
-
-# ── 1. Check / install Git (provides Git Bash) ────────────────────────────────
 
 Write-Step "Checking for Git Bash..."
 
@@ -63,7 +49,6 @@ $gitBash = Find-GitBash
 if (-not $gitBash) {
     Write-Warn "Git Bash not found. Installing Git for Windows via winget..."
     winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements | Out-Null
-    # Refresh PATH in current session
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" +
                 [System.Environment]::GetEnvironmentVariable("PATH","User")
     $gitBash = Find-GitBash
@@ -73,13 +58,10 @@ if (-not $gitBash) {
     Write-Ok "Git Bash: $gitBash"
 }
 
-# ── 2. Check / install jq ────────────────────────────────────────────────────
-
 Write-Step "Checking for jq..."
 
 function Test-Jq {
     param($bash)
-    # Check in normal PATH first, then WinGet links dir (not always on PATH in same session)
     $result = & $bash -c "command -v jq 2>/dev/null || ls '$env:LOCALAPPDATA/Microsoft/WinGet/Links/jq.exe' 2>/dev/null" 2>$null
     return ($LASTEXITCODE -eq 0 -and $result)
 }
@@ -94,26 +76,19 @@ if (-not (Test-Jq $gitBash)) {
     Write-Ok "jq found."
 }
 
-# ── 3. Ensure ~/.claude exists ────────────────────────────────────────────────
-
 Write-Step "Preparing ~/.claude directory..."
 if (-not (Test-Path $CLAUDE_DIR)) {
     New-Item -ItemType Directory -Path $CLAUDE_DIR -Force | Out-Null
 }
 Write-Ok "Directory: $CLAUDE_DIR"
 
-# ── 4. Install statusline files ───────────────────────────────────────────────
-
 Write-Step "Installing statusline scripts..."
 
 $shDest  = Join-Path $CLAUDE_DIR "statusline-command.sh"
 $ps1Dest = Join-Path $CLAUDE_DIR "statusline-wrapper.ps1"
 
-# Detect whether we're running from a local clone (file on disk) or via iex (piped string).
-# When piped via iex, $PSScriptRoot is empty and $MyInvocation.MyCommand.Path is empty.
 $localDir = $PSScriptRoot
 if (-not $localDir) { $localDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
-
 $localSh = if ($localDir) { Join-Path $localDir "statusline-command.sh" } else { $null }
 
 if ($localSh -and (Test-Path $localSh)) {
@@ -130,11 +105,8 @@ if ($localSh -and (Test-Path $localSh)) {
     }
 }
 
-# Ensure LF line endings in the bash script (Windows may corrupt them)
 $shContent = [System.IO.File]::ReadAllText($shDest) -replace "`r`n", "`n" -replace "`r", "`n"
 [System.IO.File]::WriteAllText($shDest, $shContent, [System.Text.Encoding]::UTF8)
-
-# ── 5. Patch settings.json ────────────────────────────────────────────────────
 
 Write-Step "Patching Claude Code settings.json..."
 
@@ -149,8 +121,7 @@ if (Test-Path $SETTINGS) {
     Write-Ok "Settings backed up: $(Split-Path -Leaf $backup)"
 
     try {
-        $raw      = Get-Content $SETTINGS -Raw -Encoding UTF8
-        $settings = $raw | ConvertFrom-Json
+        $settings = Get-Content $SETTINGS -Raw -Encoding UTF8 | ConvertFrom-Json
     } catch {
         Write-Warn "Could not parse existing settings.json — will merge safely."
         $settings = [PSCustomObject]@{}
@@ -170,12 +141,9 @@ if (Test-Path $SETTINGS) {
 
 Write-Ok "settings.json updated."
 
-# ── 6. Verify ────────────────────────────────────────────────────────────────
-
 Write-Step "Verifying installation..."
 
-$epoch   = [int][double]::Parse((Get-Date -UFormat "%s"))
-$resetAt = $epoch + 7200
+$resetAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 7200
 $testJson = "{`"model`":{`"display_name`":`"Claude Sonnet 4.6`"},`"context_window`":{`"used_percentage`":35,`"remaining_percentage`":65,`"context_window_size`":200000,`"current_usage`":{`"input_tokens`":70000}},`"rate_limits`":{`"five_hour`":{`"used_percentage`":40,`"resets_at`":$resetAt},`"seven_day`":{`"used_percentage`":20}}}"
 
 try {
@@ -187,13 +155,11 @@ try {
         Write-Host ""
     }
 } catch {
-    Write-Warn "Live preview skipped — this is normal right after install. Restart Claude Code to verify."
+    Write-Warn "Live preview skipped. Restart Claude Code to verify."
 }
-
-# ── Done ──────────────────────────────────────────────────────────────────────
 
 Write-Host "  Done! Restart Claude Code to activate the status bar." -ForegroundColor Green
 Write-Host ""
 Write-Host "  Files installed to: $CLAUDE_DIR" -ForegroundColor DarkGray
-Write-Host "  To uninstall: remove statusLine from ~/.claude/settings.json" -ForegroundColor DarkGray
+Write-Host "  To uninstall: run uninstall.ps1 or see README" -ForegroundColor DarkGray
 Write-Host ""
