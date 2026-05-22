@@ -88,7 +88,7 @@ $shDest  = Join-Path $CLAUDE_DIR "statusline-command.sh"
 $ps1Dest = Join-Path $CLAUDE_DIR "statusline-wrapper.ps1"
 
 $localDir = $PSScriptRoot
-if (-not $localDir) { $localDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+if (-not $localDir) { $localDir = try { Split-Path -Parent $MyInvocation.MyCommand.Path } catch { $null } }
 $localSh = if ($localDir) { Join-Path $localDir "statusline-command.sh" } else { $null }
 
 if ($localSh -and (Test-Path $localSh)) {
