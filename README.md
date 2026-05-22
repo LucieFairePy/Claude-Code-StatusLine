@@ -46,15 +46,15 @@ The bar updates live with every message you send. When limits get critical:
 
 ---
 
-## Quick Install
+## Quick Install / Uninstall
 
 Open **PowerShell** and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/setup.ps1 | iex
 ```
 
-That's it. Restart Claude Code and the status bar will appear automatically.
+A menu will appear — choose **[1] Install** or **[2] Uninstall**. Restart Claude Code after either action.
 
 ---
 
@@ -67,13 +67,13 @@ That's it. Restart Claude Code and the status bar will appear automatically.
    cd Claude-Code-StatusLine
    ```
 
-2. Run the installer:
+2. Run the setup script:
 
    ```powershell
-   .\install.ps1
+   .\setup.ps1
    ```
 
-3. Restart Claude Code.
+3. Choose **[1] Install** and restart Claude Code.
 
 ---
 
@@ -160,11 +160,11 @@ Delete the entire weekly usage block at the bottom of the script.
 
 ## Uninstall
 
-```powershell
-irm https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/uninstall.ps1 | iex
-```
+Re-run the setup script and choose **[2] Uninstall**:
 
-Or from a local clone: `.\uninstall.ps1`
+```powershell
+irm https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/setup.ps1 | iex
+```
 
 ---
 
