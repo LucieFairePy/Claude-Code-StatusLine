@@ -39,10 +39,7 @@ The bar updates live with every message you send. When limits get critical:
 
 - Windows 10 or 11
 - [Claude Code](https://claude.ai/code) installed
-- [Git for Windows](https://git-scm.com) (provides Git Bash)
-- [jq](https://jqlang.github.io/jq/) (JSON processor)
-
-> The installer will automatically install Git and jq via `winget` if they are not already present.
+- PowerShell 5.1 (built into Windows — no extra installs needed)
 
 ---
 
@@ -54,7 +51,9 @@ Open **PowerShell** and run:
 irm https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/setup.ps1 | iex
 ```
 
-A menu will appear — choose **[1] Install** or **[2] Uninstall**. Restart Claude Code after either action.
+A menu appears — choose **[1] Install**, then customize which indicators to show and the bar width. Restart Claude Code when done.
+
+To reconfigure at any time, re-run and choose **[1] Install** again — your previous toggles are pre-filled.
 
 ---
 
@@ -83,8 +82,8 @@ Claude Code supports a custom `statusLine` command in `~/.claude/settings.json`.
 
 This project provides:
 
-- **`statusline-command.sh`** — A Bash script that reads the JSON, formats it into two colored lines, and prints them to stdout.
-- **`statusline-wrapper.ps1`** — A PowerShell shim that bridges Claude Code (which calls PowerShell) to Git Bash (which runs the `.sh` script).
+- **`statusline-wrapper.ps1`** — A self-contained PowerShell script that reads the JSON, formats it into two colored lines, and prints them to stdout. No external dependencies — pure PowerShell 5.1.
+- **`statusline-config.json`** — Your saved preferences (which indicators to show, bar width). Generated during install.
 
 The installer patches `~/.claude/settings.json` to register the wrapper:
 
@@ -101,38 +100,24 @@ The installer patches `~/.claude/settings.json` to register the wrapper:
 
 ## Customization
 
-All display logic lives in `~/.claude/statusline-command.sh`. Open it in any text editor to tweak:
+Re-run the setup script and choose **[1] Install** — the customization menu is shown before anything is changed:
 
-### Change bar width
+```
+  Customize your status bar:
 
-```bash
-make_bar() {
-  local pct="$1" width=8   # change 8 to any number
+    [1] [ON ] Session bar (5-hour usage)
+    [2] [ON ] Reset countdown
+    [3] [ON ] Context window bar
+    [4] [ON ] Compact warning (>80% ctx)
+    [5] [ON ] Weekly usage bar (>80%)
+    [6] Bar width: 8
+
+  Type a number to toggle, N to continue:
 ```
 
-### Change color thresholds
+Type a number to toggle that option on/off. Option **[6]** cycles the bar width through 6 / 8 / 10 / 12 characters. Type **N** to save and continue installation.
 
-```bash
-bar_color() {
-  local pct="$1"
-  if   [ "$pct" -ge 60 ]; then printf "\033[32m"
-  elif [ "$pct" -ge 30 ]; then printf "\033[33m"
-  else                          printf "\033[31m"
-```
-
-### Always show weekly usage
-
-Remove the `if [ "$week_used_int" -ge 80 ]` guard at the bottom of the script:
-
-```bash
-col=$(bar_color "$week_left")
-bar=$(make_bar "$week_left")
-line2="${line2}  ${SEP}  📅 ${col}${bar} ${week_left}%${RESET}"
-```
-
-### Hide the weekly indicator entirely
-
-Delete the entire weekly usage block at the bottom of the script.
+Your choices are saved to `~/.claude/statusline-config.json` and pre-filled next time you reconfigure.
 
 ---
 
@@ -141,14 +126,6 @@ Delete the entire weekly usage block at the bottom of the script.
 **Status bar doesn't appear after install**
 - Restart Claude Code completely (close and reopen).
 - Check that `~/.claude/settings.json` contains a `statusLine` key.
-
-**`bash.exe` not found**
-- Reinstall [Git for Windows](https://git-scm.com) and make sure "Git Bash" is included.
-- The wrapper checks three common install paths automatically.
-
-**`jq` command not found**
-- Install jq manually: `winget install jqlang.jq`
-- Or download from [jqlang.github.io/jq](https://jqlang.github.io/jq/)
 
 **All bars show `--------`**
 - Normal on the very first message. The bar populates once Claude Code sends its first JSON payload.
