@@ -1,7 +1,11 @@
 #Requires -Version 5.1
+param([switch]$Test)
+
 $ErrorActionPreference = "SilentlyContinue"
 
+# Ensure emoji and ANSI bytes reach Claude Code correctly
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding            = [System.Text.Encoding]::UTF8
 
 $ESC    = [char]27
 $RESET  = "${ESC}[0m"
@@ -13,7 +17,8 @@ $GREEN  = "${ESC}[32m"
 $RED    = "${ESC}[31m"
 $SEP    = "${DIM}|${RESET}"
 
-# Load config
+# ── Config ───────────────────────────────────────────────────────────────────
+
 $configPath = Join-Path $PSScriptRoot "statusline-config.json"
 $cfg = $null
 if (Test-Path $configPath) {
@@ -22,11 +27,11 @@ if (Test-Path $configPath) {
 
 function Cfg-Bool($key, $default) {
     if ($cfg -and ($cfg.PSObject.Properties.Name -contains $key)) { return [bool]$cfg.$key }
-    return $default
+    $default
 }
 function Cfg-Int($key, $default) {
     if ($cfg -and ($cfg.PSObject.Properties.Name -contains $key)) { return [int]$cfg.$key }
-    return $default
+    $default
 }
 
 $showSession   = Cfg-Bool 'showSession'   $true
@@ -36,14 +41,24 @@ $showCompact   = Cfg-Bool 'showCompact'   $true
 $showWeekly    = Cfg-Bool 'showWeekly'    $true
 $barWidth      = Cfg-Int  'barWidth'      8
 
-# Read stdin
+# ── Read JSON ────────────────────────────────────────────────────────────────
+
 $raw = ""
-try { $raw = [Console]::In.ReadToEnd() } catch {}
+
+if ($Test) {
+    $resetAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 7200
+    $raw = "{`"model`":{`"display_name`":`"Claude Sonnet 4.6`"},`"context_window`":{`"used_percentage`":35,`"context_window_size`":200000,`"current_usage`":{`"input_tokens`":70000}},`"rate_limits`":{`"five_hour`":{`"used_percentage`":40,`"resets_at`":$resetAt},`"seven_day`":{`"used_percentage`":20}}}"
+} elseif ([Console]::IsInputRedirected) {
+    try { $raw = [Console]::In.ReadToEnd() } catch {}
+}
+
 if (-not $raw -or $raw.Trim() -eq "") { exit 0 }
 
 $data = $null
 try { $data = $raw | ConvertFrom-Json } catch { exit 0 }
 if (-not $data) { exit 0 }
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 function Make-Bar([double]$pct, [int]$w) {
     $filled = [Math]::Min($w, [Math]::Max(0, [Math]::Round($pct / 100 * $w)))
@@ -53,53 +68,69 @@ function Make-Bar([double]$pct, [int]$w) {
 function Get-Color([double]$pct) {
     if ($pct -ge 60) { return $GREEN }
     if ($pct -ge 30) { return $YELLOW }
-    return $RED
+    $RED
 }
 
-$model      = try { $data.model.display_name }                                    catch { $null }
-$ctxUsed    = try { [double]$data.context_window.used_percentage }                catch { $null }
-$ctxSize    = try { [long]$data.context_window.context_window_size }              catch { $null }
-$ctxInput   = try { [long]$data.context_window.current_usage.input_tokens }       catch { $null }
-$fivePct    = try { [double]$data.rate_limits.five_hour.used_percentage }         catch { $null }
-$fiveResets = try { [long]$data.rate_limits.five_hour.resets_at }                 catch { $null }
-$weekPct    = try { [double]$data.rate_limits.seven_day.used_percentage }         catch { $null }
+function Safe-Double($val) {
+    try { $d = [double]$val; if ([double]::IsNaN($d)) { return $null }; return $d } catch { $null }
+}
+function Safe-Long($val) {
+    try { return [long]$val } catch { $null }
+}
+function Safe-String($val) {
+    try { $s = [string]$val; if ($s -eq "" -or $s -eq "null") { return $null }; return $s } catch { $null }
+}
+
+# ── Parse fields ─────────────────────────────────────────────────────────────
+
+$model      = Safe-String (try { $data.model.display_name }                             catch { $null })
+$ctxUsed    = Safe-Double (try { $data.context_window.used_percentage }                 catch { $null })
+$ctxSize    = Safe-Long   (try { $data.context_window.context_window_size }             catch { $null })
+$ctxInput   = Safe-Long   (try { $data.context_window.current_usage.input_tokens }      catch { $null })
+$fivePct    = Safe-Double (try { $data.rate_limits.five_hour.used_percentage }          catch { $null })
+$fiveResets = Safe-Long   (try { $data.rate_limits.five_hour.resets_at }                catch { $null })
+$weekPct    = Safe-Double (try { $data.rate_limits.seven_day.used_percentage }          catch { $null })
 
 if (-not $model) { $model = "Claude" }
 
+# ── Countdown ────────────────────────────────────────────────────────────────
+
 $countdown = ""
-if ($fiveResets) {
-    $diff = $fiveResets - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    if ($diff -le 0) {
-        $countdown = "now!"
-    } else {
-        $h = [Math]::Floor($diff / 3600)
-        $m = [Math]::Floor(($diff % 3600) / 60)
-        $countdown = if ($h -gt 0) { "${h}h ${m}m" } else { "${m}m" }
-    }
+if ($fiveResets -and $fiveResets -gt 0) {
+    try {
+        $diff = $fiveResets - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        if ($diff -le 0) {
+            $countdown = "now!"
+        } else {
+            $h = [Math]::Floor($diff / 3600)
+            $m = [Math]::Floor(($diff % 3600) / 60)
+            $countdown = if ($h -gt 0) { "${h}h ${m}m" } else { "${m}m" }
+        }
+    } catch {}
 }
 
-# ── Line 1 ──────────────────────────────────────────────────────────────────
+# ── Line 1: model + session + countdown ──────────────────────────────────────
 
-$line1 = "  🤖 ${CYAN}${BOLD}${model}${RESET}"
+$line1 = "  ${CYAN}${BOLD}[${model}]${RESET}"
 
 if ($showSession) {
     if ($null -ne $fivePct) {
-        $left = [Math]::Round(100 - $fivePct)
-        $line1 += "  ${SEP}  ⚡ $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
+        $left  = [Math]::Round(100 - $fivePct)
+        $line1 += "  ${SEP}  $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
     } else {
-        $line1 += "  ${SEP}  ⚡ ${DIM}$('-' * $barWidth)${RESET}"
+        $line1 += "  ${SEP}  ${DIM}$('-' * $barWidth)${RESET}"
     }
 }
 
 if ($showCountdown -and $countdown) {
     if ($countdown -eq "now!") {
-        $line1 += "  ${SEP}  ⏳ ${RED}${BOLD}reset now!${RESET}"
+        $line1 += "  ${SEP}  ${RED}${BOLD}reset now!${RESET}"
     } else {
-        $line1 += "  ${SEP}  ⏳ ${DIM}reset ${countdown}${RESET}"
+        $line1 += "  ${SEP}  ${DIM}~${countdown}${RESET}"
     }
 }
 
-# ── Line 2 ──────────────────────────────────────────────────────────────────
+# ── Line 2: context + warnings ───────────────────────────────────────────────
 
 $line2 = ""
 
@@ -111,20 +142,22 @@ if ($showContext) {
             $r   = [Math]::Max(0, $ctxSize - $ctxInput)
             $rem = if ($r -ge 1000) { " ${DIM}($([Math]::Round($r / 1000))k)${RESET}" } else { " ${DIM}(${r})${RESET}" }
         }
-        $line2 = "  🧠 $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}${rem}"
+        $line2 = "  ctx: $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}${rem}"
     } else {
-        $line2 = "  🧠 ${DIM}$('-' * $barWidth)${RESET}"
+        $line2 = "  ctx: ${DIM}$('-' * $barWidth)${RESET}"
     }
 }
 
 if ($showCompact -and $null -ne $ctxUsed -and $ctxUsed -ge 80) {
-    $line2 += "  ${SEP}  ${YELLOW}${BOLD}⚠️  compact soon${RESET}"
+    $line2 += "  ${SEP}  ${YELLOW}${BOLD}compact soon${RESET}"
 }
 
 if ($showWeekly -and $null -ne $weekPct -and [Math]::Round($weekPct) -ge 80) {
     $left   = [Math]::Round(100 - $weekPct)
-    $line2 += "  ${SEP}  ${RED}${BOLD}📅 $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
+    $line2 += "  ${SEP}  ${RED}${BOLD}7d: $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
 }
+
+# ── Output ───────────────────────────────────────────────────────────────────
 
 [Console]::WriteLine($line1)
 if ($line2) { [Console]::WriteLine($line2) }

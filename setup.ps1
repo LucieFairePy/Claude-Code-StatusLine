@@ -4,7 +4,10 @@ param([string]$Action = "")
 
 $ErrorActionPreference = "Stop"
 
-$REPO_URL   = "https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main"
+# Force TLS 1.2 — required by GitHub, missing on some Windows 10 installs
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+$REPO_URL  = "https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main"
 $CLAUDE_DIR = Join-Path $env:USERPROFILE ".claude"
 $SETTINGS   = Join-Path $CLAUDE_DIR "settings.json"
 $CFG_FILE   = Join-Path $CLAUDE_DIR "statusline-config.json"
@@ -38,6 +41,7 @@ if ($Action -eq "") {
 
 function Show-CustomizeMenu {
     $BAR_WIDTHS = @(6, 8, 10, 12)
+    $cfgFile    = Join-Path (Join-Path $env:USERPROFILE ".claude") "statusline-config.json"
 
     $opts = [PSCustomObject]@{
         showSession   = $true
@@ -48,28 +52,28 @@ function Show-CustomizeMenu {
         barWidth      = 8
     }
 
-    # Pre-fill from existing config if upgrading
-    if (Test-Path $CFG_FILE) {
+    # Pre-fill from existing config when reconfiguring
+    if (Test-Path $cfgFile) {
         try {
-            $existing = Get-Content $CFG_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
+            $existing = Get-Content $cfgFile -Raw -Encoding UTF8 | ConvertFrom-Json
             foreach ($p in @('showSession','showCountdown','showContext','showCompact','showWeekly','barWidth')) {
                 if ($existing.PSObject.Properties.Name -contains $p) { $opts.$p = $existing.$p }
             }
         } catch {}
     }
 
-    function Label($val) { if ($val) { "[ON ]" } else { "[OFF]" } }
-    function Color($val) { if ($val) { "Cyan" } else { "DarkGray" } }
+    function On-Off($val) { if ($val) { "[ON ]" } else { "[OFF]" } }
+    function On-Color($val) { if ($val) { "Cyan" } else { "DarkGray" } }
 
     while ($true) {
         Write-Host ""
         Write-Host "  Customize your status bar:" -ForegroundColor Magenta
         Write-Host ""
-        Write-Host "    [1] $(Label $opts.showSession)   Session bar (5-hour usage)"   -ForegroundColor (Color $opts.showSession)
-        Write-Host "    [2] $(Label $opts.showCountdown) Reset countdown"               -ForegroundColor (Color $opts.showCountdown)
-        Write-Host "    [3] $(Label $opts.showContext)   Context window bar"            -ForegroundColor (Color $opts.showContext)
-        Write-Host "    [4] $(Label $opts.showCompact)   Compact warning (>80% ctx)"   -ForegroundColor (Color $opts.showCompact)
-        Write-Host "    [5] $(Label $opts.showWeekly)    Weekly usage bar (>80%)"       -ForegroundColor (Color $opts.showWeekly)
+        Write-Host "    [1] $(On-Off $opts.showSession)   Session bar (5-hour usage)"   -ForegroundColor (On-Color $opts.showSession)
+        Write-Host "    [2] $(On-Off $opts.showCountdown) Reset countdown"               -ForegroundColor (On-Color $opts.showCountdown)
+        Write-Host "    [3] $(On-Off $opts.showContext)   Context window bar"            -ForegroundColor (On-Color $opts.showContext)
+        Write-Host "    [4] $(On-Off $opts.showCompact)   Compact warning (>80% ctx)"   -ForegroundColor (On-Color $opts.showCompact)
+        Write-Host "    [5] $(On-Off $opts.showWeekly)    Weekly usage (>80%)"           -ForegroundColor (On-Color $opts.showWeekly)
         Write-Host "    [6] Bar width: $($opts.barWidth)" -ForegroundColor Cyan
         Write-Host ""
         Write-Host "  Type a number to toggle, N to continue:" -ForegroundColor DarkGray
@@ -82,7 +86,8 @@ function Show-CustomizeMenu {
             "4" { $opts.showCompact   = -not $opts.showCompact }
             "5" { $opts.showWeekly    = -not $opts.showWeekly }
             "6" {
-                $idx = [Array]::IndexOf($BAR_WIDTHS, $opts.barWidth)
+                $idx = [Array]::IndexOf($BAR_WIDTHS, [int]$opts.barWidth)
+                if ($idx -lt 0) { $idx = 0 }
                 $opts.barWidth = $BAR_WIDTHS[($idx + 1) % $BAR_WIDTHS.Length]
             }
             "N" { return $opts }
@@ -107,10 +112,9 @@ function Invoke-Install {
             Write-Ok "Execution policy already permissive ($current)."
         }
     } catch {
-        Write-Warn "Could not set execution policy. If status bar does not work, run: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned"
+        Write-Warn "Could not set execution policy. If the status bar does not work, run: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned"
     }
 
-    # Customization
     $config = Show-CustomizeMenu
     Write-Host ""
 
@@ -123,7 +127,9 @@ function Invoke-Install {
     Write-Step "Installing statusline script..."
 
     $localDir = $PSScriptRoot
-    if (-not $localDir) { $localDir = try { Split-Path -Parent $MyInvocation.MyCommand.Path } catch { $null } }
+    if (-not $localDir) {
+        $localDir = try { Split-Path -Parent $MyInvocation.PSCommandPath } catch { $null }
+    }
     $localPs1 = if ($localDir) { Join-Path $localDir "statusline-wrapper.ps1" } else { $null }
 
     if ($localPs1 -and (Test-Path $localPs1)) {
@@ -134,17 +140,25 @@ function Invoke-Install {
             Invoke-WebRequest "$REPO_URL/statusline-wrapper.ps1" -OutFile $PS1_DEST -UseBasicParsing
             Write-Ok "Downloaded from GitHub."
         } catch {
-            Write-Fail "Download failed. Check internet connection."
+            Write-Fail "Download failed: $_"
         }
     }
+
+    # Unblock file — removes Zone.Identifier mark from downloaded file so
+    # RemoteSigned policy does not block execution on fresh installs
+    try { Unblock-File -Path $PS1_DEST -ErrorAction Stop; Write-Ok "File unblocked." } catch {}
 
     # Remove legacy bash script if present from old install
     $legacySh = Join-Path $CLAUDE_DIR "statusline-command.sh"
     if (Test-Path $legacySh) { Remove-Item $legacySh -Force; Write-Ok "Removed legacy statusline-command.sh." }
 
     Write-Step "Saving configuration..."
-    $config | ConvertTo-Json -Depth 5 | Set-Content $CFG_FILE -Encoding UTF8
-    Write-Ok "Config saved: statusline-config.json"
+    try {
+        $config | ConvertTo-Json -Depth 5 | Set-Content $CFG_FILE -Encoding UTF8
+        Write-Ok "Config saved."
+    } catch {
+        Write-Warn "Could not save config: $_"
+    }
 
     Write-Step "Patching Claude Code settings.json..."
 
@@ -158,12 +172,13 @@ function Invoke-Install {
         Copy-Item $SETTINGS $backup
         Write-Ok "Settings backed up: $(Split-Path -Leaf $backup)"
 
+        $settings = $null
         try {
             $settings = Get-Content $SETTINGS -Raw -Encoding UTF8 | ConvertFrom-Json
         } catch {
-            Write-Warn "Could not parse existing settings.json — merging safely."
-            $settings = [PSCustomObject]@{}
+            Write-Warn "Could not parse existing settings.json — creating fresh merge."
         }
+        if (-not $settings) { $settings = [PSCustomObject]@{} }
 
         if ($settings.PSObject.Properties.Name -contains "statusLine") {
             $settings.statusLine = $statusLineValue
@@ -180,26 +195,24 @@ function Invoke-Install {
     Write-Ok "settings.json updated."
 
     Write-Step "Verifying installation..."
-
-    $resetAt  = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 7200
-    $testJson = "{`"model`":{`"display_name`":`"Claude Sonnet 4.6`"},`"context_window`":{`"used_percentage`":35,`"remaining_percentage`":65,`"context_window_size`":200000,`"current_usage`":{`"input_tokens`":70000}},`"rate_limits`":{`"five_hour`":{`"used_percentage`":40,`"resets_at`":$resetAt},`"seven_day`":{`"used_percentage`":20}}}"
-
     try {
-        $result = $testJson | & powershell -NoProfile -NonInteractive -File $PS1_DEST 2>$null
+        $result = & powershell -NoProfile -NonInteractive -File $PS1_DEST -Test 2>$null
         if ($result) {
             Write-Host ""
-            Write-Host "  Status bar preview:" -ForegroundColor DarkGray
+            Write-Host "  Preview:" -ForegroundColor DarkGray
             $result | ForEach-Object { Write-Host "    $_" }
             Write-Host ""
+        } else {
+            Write-Warn "No preview output — script ran but produced nothing. Try restarting Claude Code."
         }
     } catch {
-        Write-Warn "Live preview skipped. Restart Claude Code to verify."
+        Write-Warn "Preview skipped: $_"
     }
 
     Write-Host "  Done! Restart Claude Code to activate the status bar." -ForegroundColor Green
     Write-Host ""
-    Write-Host "  Files installed to: $CLAUDE_DIR" -ForegroundColor DarkGray
-    Write-Host "  To customize: re-run this script and choose [1] Install again" -ForegroundColor DarkGray
+    Write-Host "  Installed to:  $CLAUDE_DIR" -ForegroundColor DarkGray
+    Write-Host "  To reconfigure: re-run this script and choose [1]" -ForegroundColor DarkGray
     Write-Host ""
 }
 
