@@ -69,7 +69,11 @@ if ($Test) {
 }
 
 $raw = $raw.Trim()
-if (-not $raw) { exit 0 }
+if (-not $raw) {
+    # Emit visible placeholder so a broken stdin pipe is diagnosable in the status bar
+    [Console]::WriteLine("  [StatusLine: no data received — check stdin piping]")
+    exit 0
+}
 
 $data = $null
 try { $data = $raw | ConvertFrom-Json } catch { exit 0 }

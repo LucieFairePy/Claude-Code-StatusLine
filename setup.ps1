@@ -164,7 +164,7 @@ function Invoke-Install {
 
     $statusLineValue = [PSCustomObject]@{
         type    = "command"
-        command = "powershell -NoProfile -NonInteractive -File `"$PS1_DEST`""
+        command = "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$PS1_DEST`""
     }
 
     if (Test-Path $SETTINGS) {
@@ -181,6 +181,20 @@ function Invoke-Install {
         if (-not $settings) { $settings = [PSCustomObject]@{} }
 
         if ($settings.PSObject.Properties.Name -contains "statusLine") {
+            $existingCmd = try { $settings.statusLine.command } catch { "" }
+            if ($existingCmd -and $existingCmd -notlike "*statusline-wrapper.ps1*") {
+                Write-Host ""
+                Write-Warn "statusLine already set by another tool:"
+                Write-Host "    $existingCmd" -ForegroundColor DarkGray
+                Write-Host ""
+                $overwrite = (Read-Host "  Overwrite? [Y/N]").Trim().ToUpper()
+                if ($overwrite -ne "Y") {
+                    Write-Host ""
+                    Write-Host "  Skipped. Edit settings.json manually to switch statusLine." -ForegroundColor Yellow
+                    Write-Host ""
+                    return
+                }
+            }
             $settings.statusLine = $statusLineValue
         } else {
             $settings | Add-Member -NotePropertyName statusLine -NotePropertyValue $statusLineValue
