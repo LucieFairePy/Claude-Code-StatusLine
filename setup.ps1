@@ -104,6 +104,21 @@ function Invoke-Install {
     Write-Host "  Installing..." -ForegroundColor Magenta
     Write-Host ""
 
+    # ── CLAUDE CODE RUNNING CHECK ────────────────────────────────────────────────
+    $claudeProcs = @(Get-Process -Name "claude" -ErrorAction SilentlyContinue) +
+                   @(Get-Process -Name "claude-code" -ErrorAction SilentlyContinue) +
+                   @(Get-Process -Name "Claude" -ErrorAction SilentlyContinue)
+    $claudeProcs = $claudeProcs | Where-Object { $_ -ne $null }
+    if ($claudeProcs.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  WARNING: Claude Code appears to be running!" -ForegroundColor Red
+        Write-Host "  It will overwrite settings.json right after we write it." -ForegroundColor Yellow
+        Write-Host "  Close Claude Code completely (window + system tray) before continuing." -ForegroundColor Yellow
+        Write-Host ""
+        $cont = (Read-Host "  Continue anyway? [Y/N]").Trim().ToUpper()
+        if ($cont -ne "Y") { Write-Host "  Aborted." -ForegroundColor DarkGray; return }
+    }
+
     # ── SYSTEM INFO ─────────────────────────────────────────────────────────────
     Write-Step "System info"
     Write-Info "PS version   : $($PSVersionTable.PSVersion)"
@@ -384,6 +399,23 @@ function Invoke-Install {
         }
     } catch {
         Write-Warn "Could not list directory: $_"
+    }
+
+    # Race condition check — did Claude Code overwrite settings.json after our write?
+    try {
+        $currentContent = [System.IO.File]::ReadAllText($SETTINGS, [System.Text.Encoding]::UTF8)
+        if ($currentContent -notlike "*statusline-wrapper.ps1*") {
+            Write-Host ""
+            Write-Host "  RACE CONDITION DETECTED!" -ForegroundColor Red
+            Write-Host "  settings.json no longer contains our statusLine." -ForegroundColor Red
+            Write-Host "  Claude Code was running and overwrote our changes." -ForegroundColor Yellow
+            Write-Host "  -> Close Claude Code completely, then re-run this script." -ForegroundColor Yellow
+            Write-Host ""
+        } else {
+            Write-Ok "settings.json still contains our statusLine -- no race condition."
+        }
+    } catch {
+        Write-Warn "Could not verify final settings.json: $_"
     }
 
     Write-Sep
