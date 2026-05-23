@@ -17,6 +17,14 @@ $GREEN  = "${ESC}[32m"
 $RED    = "${ESC}[31m"
 $SEP    = "${DIM}|${RESET}"
 
+# ── Emoji (code points avoid PS5.1 BOM/encoding issues) ─────────────────────
+$E_ROBOT    = [char]::ConvertFromUtf32(0x1F916)  # 🤖
+$E_BOLT     = [char]::ConvertFromUtf32(0x26A1)   # ⚡
+$E_TIMER    = [char]::ConvertFromUtf32(0x23F3)   # ⏳
+$E_BRAIN    = [char]::ConvertFromUtf32(0x1F9E0)  # 🧠
+$E_WARN     = [char]::ConvertFromUtf32(0x26A0)   # ⚠
+$E_CAL      = [char]::ConvertFromUtf32(0x1F4C5)  # 📅
+
 # ── Config ───────────────────────────────────────────────────────────────────
 
 $configPath = Join-Path $PSScriptRoot "statusline-config.json"
@@ -120,22 +128,22 @@ if ($fiveResets -and $fiveResets -gt 0) {
 
 # ── Line 1: model + session + countdown ──────────────────────────────────────
 
-$line1 = "  ${CYAN}${BOLD}[${model}]${RESET}"
+$line1 = "  ${E_ROBOT} ${CYAN}${BOLD}${model}${RESET}"
 
 if ($showSession) {
     if ($null -ne $fivePct) {
         $left  = [Math]::Round(100 - $fivePct)
-        $line1 += "  ${SEP}  $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
+        $line1 += "  ${SEP}  ${E_BOLT} $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
     } else {
-        $line1 += "  ${SEP}  ${DIM}$('-' * $barWidth)${RESET}"
+        $line1 += "  ${SEP}  ${E_BOLT} ${DIM}$('-' * $barWidth)${RESET}"
     }
 }
 
 if ($showCountdown -and $countdown) {
     if ($countdown -eq "now!") {
-        $line1 += "  ${SEP}  ${RED}${BOLD}reset now!${RESET}"
+        $line1 += "  ${SEP}  ${E_TIMER} ${RED}${BOLD}reset now!${RESET}"
     } else {
-        $line1 += "  ${SEP}  ${DIM}~${countdown}${RESET}"
+        $line1 += "  ${SEP}  ${E_TIMER} ${DIM}reset ${countdown}${RESET}"
     }
 }
 
@@ -151,19 +159,19 @@ if ($showContext) {
             $r   = [Math]::Max(0, $ctxSize - $ctxInput)
             $rem = if ($r -ge 1000) { " ${DIM}($([Math]::Round($r / 1000))k)${RESET}" } else { " ${DIM}(${r})${RESET}" }
         }
-        $line2 = "  ctx: $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}${rem}"
+        $line2 = "  ${E_BRAIN} $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}${rem}"
     } else {
-        $line2 = "  ctx: ${DIM}$('-' * $barWidth)${RESET}"
+        $line2 = "  ${E_BRAIN} ${DIM}$('-' * $barWidth)${RESET}"
     }
 }
 
 if ($showCompact -and $null -ne $ctxUsed -and $ctxUsed -ge 80) {
-    $line2 += "  ${SEP}  ${YELLOW}${BOLD}compact soon${RESET}"
+    $line2 += "  ${SEP}  ${E_WARN}  ${YELLOW}${BOLD}compact soon${RESET}"
 }
 
 if ($showWeekly -and $null -ne $weekPct -and [Math]::Round($weekPct) -ge 80) {
     $left   = [Math]::Round(100 - $weekPct)
-    $line2 += "  ${SEP}  ${RED}${BOLD}7d: $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
+    $line2 += "  ${SEP}  ${E_CAL} ${RED}${BOLD}7d: $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
 }
 
 # ── Output ───────────────────────────────────────────────────────────────────
