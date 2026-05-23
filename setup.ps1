@@ -119,43 +119,9 @@ function Invoke-Install {
         if ($cont -ne "Y") { Write-Host "  Aborted." -ForegroundColor DarkGray; return }
     }
 
-    # ── SYSTEM INFO ─────────────────────────────────────────────────────────────
-    Write-Step "System info"
-    Write-Info "PS version   : $($PSVersionTable.PSVersion)"
-    Write-Info "OS           : $([System.Environment]::OSVersion.VersionString)"
-    Write-Info "Username     : $env:USERNAME"
-    Write-Info "USERPROFILE  : $env:USERPROFILE"
-    Write-Info "CLAUDE_DIR   : $CLAUDE_DIR"
-    Write-Info "SETTINGS     : $SETTINGS"
-    Write-Info "PS1_DEST     : $PS1_DEST"
-
-    try {
-        $nodeVer = & node --version 2>$null
-        Write-Info "Node.js      : $nodeVer"
-    } catch {
-        Write-Warn "Node.js not found in PATH — Claude Code requires Node.js"
-    }
-
-    try {
-        $claudeVer = & claude --version 2>$null
-        Write-Info "Claude Code  : $claudeVer"
-    } catch {
-        Write-Warn "claude not found in PATH — is Claude Code installed?"
-    }
-
-    Write-Sep
-
     # ── EXECUTION POLICY ────────────────────────────────────────────────────────
-    Write-Step "Execution policy (all scopes)"
+    Write-Step "Execution policy"
     try {
-        foreach ($scope in @('MachinePolicy','UserPolicy','Process','CurrentUser','LocalMachine')) {
-            try {
-                $p = Get-ExecutionPolicy -Scope $scope
-                Write-Info "${scope}: $p"
-            } catch {
-                Write-Info "${scope}: (unavailable)"
-            }
-        }
         $current = Get-ExecutionPolicy -Scope CurrentUser
         if ($current -eq "Restricted" -or $current -eq "Undefined") {
             Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
@@ -182,15 +148,6 @@ function Invoke-Install {
         } else {
             Write-Ok "Exists: $CLAUDE_DIR"
         }
-        Write-Info "Contents of ~/.claude:"
-        try {
-            Get-ChildItem $CLAUDE_DIR | ForEach-Object {
-                $size = if ($_.PSIsContainer) { "<dir>" } else { "$($_.Length) bytes" }
-                Write-Info "  $($_.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))  $size  $($_.Name)"
-            }
-        } catch {
-            Write-Info "  (could not list directory: $_)"
-        }
     } catch {
         Write-Fail "Could not create ~/.claude: $_"
     }
@@ -205,8 +162,6 @@ function Invoke-Install {
         $localDir = try { Split-Path -Parent $MyInvocation.PSCommandPath } catch { $null }
     }
     $localPs1 = if ($localDir) { Join-Path $localDir "statusline-wrapper.ps1" } else { $null }
-    Write-Info "PSScriptRoot : '$PSScriptRoot'"
-    Write-Info "Local source : '$localPs1'"
 
     if ($localPs1 -and (Test-Path $localPs1)) {
         try {
@@ -216,7 +171,6 @@ function Invoke-Install {
             Write-Fail "Copy failed: $_"
         }
     } else {
-        Write-Info "No local clone — downloading from GitHub..."
         try {
             $resp = Invoke-WebRequest "$REPO_URL/statusline-wrapper.ps1" -OutFile $PS1_DEST -UseBasicParsing -PassThru
             Write-Ok "Downloaded from GitHub. HTTP $($resp.StatusCode)"
@@ -225,27 +179,8 @@ function Invoke-Install {
         }
     }
 
-    if (Test-Path $PS1_DEST) {
-        $fi = Get-Item $PS1_DEST
-        Write-Info "File on disk : $($fi.FullName)"
-        Write-Info "Size         : $($fi.Length) bytes"
-        Write-Info "LastWrite    : $($fi.LastWriteTime)"
-    } else {
+    if (-not (Test-Path $PS1_DEST)) {
         Write-Fail "statusline-wrapper.ps1 not found after install step — aborting."
-    }
-
-    # Zone.Identifier check
-    Write-Info "Zone.Identifier ADS check..."
-    try {
-        $zoneStream = "$PS1_DEST:Zone.Identifier"
-        if (Test-Path $zoneStream) {
-            $zoneContent = Get-Content $zoneStream -ErrorAction Stop
-            Write-Warn "Zone.Identifier present: $zoneContent"
-        } else {
-            Write-Info "No Zone.Identifier — file is unblocked."
-        }
-    } catch {
-        Write-Info "Zone check error (non-fatal): $_"
     }
 
     # Unblock
@@ -256,15 +191,6 @@ function Invoke-Install {
         Write-Warn "Unblock-File failed: $_ — proceeding anyway (-ExecutionPolicy Bypass covers this)."
     }
 
-    # Verify Zone.Identifier gone after unblock
-    try {
-        if (Test-Path "$PS1_DEST:Zone.Identifier") {
-            Write-Warn "Zone.Identifier still present after Unblock-File."
-        } else {
-            Write-Info "Zone.Identifier confirmed absent after unblock."
-        }
-    } catch {}
-
     # Remove legacy
     $legacySh = Join-Path $CLAUDE_DIR "statusline-command.sh"
     if (Test-Path $legacySh) { Remove-Item $legacySh -Force; Write-Ok "Removed legacy statusline-command.sh." }
@@ -274,10 +200,8 @@ function Invoke-Install {
     # ── CONFIG ──────────────────────────────────────────────────────────────────
     Write-Step "Saving statusline-config.json"
     try {
-        $configJson = $config | ConvertTo-Json -Depth 5
         $config | ConvertTo-Json -Depth 5 | Set-Content $CFG_FILE -Encoding UTF8
-        Write-Ok "Config saved: $CFG_FILE"
-        Write-Info "Content: $configJson"
+        Write-Ok "Config saved."
     } catch {
         Write-Warn "Could not save config: $_"
     }
@@ -291,23 +215,8 @@ function Invoke-Install {
         type    = "command"
         command = "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$PS1_DEST`""
     }
-    Write-Info "Will write command: $($statusLineValue.command)"
 
     if (Test-Path $SETTINGS) {
-        Write-Info "settings.json exists — checking first 4 bytes for BOM..."
-        try {
-            $rawBytes = [System.IO.File]::ReadAllBytes($SETTINGS)
-            $bom = ($rawBytes | Select-Object -First 4 | ForEach-Object { $_.ToString("X2") }) -join " "
-            Write-Info "First 4 bytes (hex): $bom"
-            if ($rawBytes.Length -ge 3 -and $rawBytes[0] -eq 0xEF -and $rawBytes[1] -eq 0xBB -and $rawBytes[2] -eq 0xBF) {
-                Write-Warn "UTF-8 BOM detected — file was written by PS5.1 Set-Content. Will overwrite without BOM."
-            } else {
-                Write-Info "No BOM detected — encoding looks clean."
-            }
-        } catch {
-            Write-Warn "Could not read bytes: $_"
-        }
-
         $backup = "$SETTINGS.backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
         try {
             Copy-Item $SETTINGS $backup
@@ -316,18 +225,9 @@ function Invoke-Install {
             Write-Warn "Backup failed: $_"
         }
 
-        Write-Info "Raw content of settings.json before patch:"
-        try {
-            $rawContent = Get-Content $SETTINGS -Raw
-            Write-Info $rawContent
-        } catch {
-            Write-Warn "Could not read settings.json raw: $_"
-        }
-
         $settingsObj = $null
         try {
             $settingsObj = [System.IO.File]::ReadAllText($SETTINGS, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-            Write-Ok "settings.json parsed OK."
         } catch {
             Write-Warn "Could not parse settings.json: $_ -- will create fresh."
         }
@@ -335,7 +235,6 @@ function Invoke-Install {
 
         if ($settingsObj.PSObject.Properties.Name -contains "statusLine") {
             $existingCmd = try { $settingsObj.statusLine.command } catch { "" }
-            Write-Info "Existing statusLine command: $existingCmd"
             if ($existingCmd -and $existingCmd -notlike "*statusline-wrapper.ps1*") {
                 Write-Host ""
                 Write-Warn "statusLine already set by another tool:"
@@ -351,54 +250,22 @@ function Invoke-Install {
             }
             $settingsObj.statusLine = $statusLineValue
         } else {
-            Write-Info "No existing statusLine -- adding."
             $settingsObj | Add-Member -NotePropertyName statusLine -NotePropertyValue $statusLineValue
         }
 
         try {
             [System.IO.File]::WriteAllBytes($SETTINGS, [System.Text.Encoding]::UTF8.GetBytes(($settingsObj | ConvertTo-Json -Depth 10)))
-            Write-Ok "settings.json written (UTF-8 NoBOM)."
+            Write-Ok "settings.json updated."
         } catch {
             Write-Fail "WriteAllBytes failed: $_"
         }
     } else {
-        Write-Info "settings.json does not exist — creating fresh."
         try {
             [System.IO.File]::WriteAllBytes($SETTINGS, [System.Text.Encoding]::UTF8.GetBytes(([PSCustomObject]@{ statusLine = $statusLineValue } | ConvertTo-Json -Depth 10)))
-            Write-Ok "settings.json created (UTF-8 NoBOM)."
+            Write-Ok "settings.json created."
         } catch {
             Write-Fail "WriteAllBytes failed: $_"
         }
-    }
-
-    # Verify written file
-    Write-Info "Verifying written settings.json..."
-    try {
-        $writtenBytes = [System.IO.File]::ReadAllBytes($SETTINGS)
-        $bom2 = ($writtenBytes | Select-Object -First 4 | ForEach-Object { $_.ToString("X2") }) -join " "
-        Write-Info "First 4 bytes (hex): $bom2"
-        if ($writtenBytes[0] -eq 0xEF -and $writtenBytes[1] -eq 0xBB -and $writtenBytes[2] -eq 0xBF) {
-            Write-Warn "BOM still present after write — unexpected!"
-        } else {
-            Write-Ok "No BOM — settings.json encoding confirmed clean."
-        }
-        Write-Info "Content after write:"
-        Write-Info ([System.Text.Encoding]::UTF8.GetString($writtenBytes))
-    } catch {
-        Write-Warn "Post-write verify failed: $_"
-    }
-
-    Write-Sep
-
-    # ── FINAL FILE LISTING ───────────────────────────────────────────────────────
-    Write-Step "Final state of ~/.claude"
-    try {
-        Get-ChildItem $CLAUDE_DIR | ForEach-Object {
-            $size = if ($_.PSIsContainer) { "<dir>" } else { "$($_.Length) bytes" }
-            Write-Info "  $($_.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))  $size  $($_.Name)"
-        }
-    } catch {
-        Write-Warn "Could not list directory: $_"
     }
 
     # Race condition check — did Claude Code overwrite settings.json after our write?
@@ -411,8 +278,6 @@ function Invoke-Install {
             Write-Host "  Claude Code was running and overwrote our changes." -ForegroundColor Yellow
             Write-Host "  -> Close Claude Code completely, then re-run this script." -ForegroundColor Yellow
             Write-Host ""
-        } else {
-            Write-Ok "settings.json still contains our statusLine -- no race condition."
         }
     } catch {
         Write-Warn "Could not verify final settings.json: $_"
@@ -441,16 +306,13 @@ function Invoke-Install {
     try {
         $resetAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 7200
         $testJson = '{"model":{"display_name":"Claude Sonnet 4.6"},"context_window":{"used_percentage":35,"context_window_size":200000,"current_usage":{"input_tokens":70000}},"rate_limits":{"five_hour":{"used_percentage":40,"resets_at":RESETAT},"seven_day":{"used_percentage":20}}}'.Replace('RESETAT', $resetAt)
-        Write-Info "Piping JSON: $testJson"
         $stdinResult = $testJson | & powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $PS1_DEST
-        $exitCode = $LASTEXITCODE
-        Write-Info "Exit code: $exitCode"
         if ($stdinResult) {
             Write-Ok "Stdin pipe output:"
             $stdinResult | ForEach-Object { Write-Host "    $_" }
         } else {
             Write-Warn "Stdin pipe produced no output — bar will not appear in Claude Code!"
-            Write-Warn "This is Bug 3 (stdin piping failure). Check wrapper script manually."
+            Write-Warn "Check wrapper script manually."
         }
     } catch {
         Write-Warn "Stdin pipe test failed: $_"
