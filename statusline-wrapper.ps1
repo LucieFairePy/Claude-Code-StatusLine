@@ -48,11 +48,20 @@ $raw = ""
 if ($Test) {
     $resetAt = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + 7200
     $raw = "{`"model`":{`"display_name`":`"Claude Sonnet 4.6`"},`"context_window`":{`"used_percentage`":35,`"context_window_size`":200000,`"current_usage`":{`"input_tokens`":70000}},`"rate_limits`":{`"five_hour`":{`"used_percentage`":40,`"resets_at`":$resetAt},`"seven_day`":{`"used_percentage`":20}}}"
-} elseif ([Console]::IsInputRedirected) {
-    try { $raw = [Console]::In.ReadToEnd() } catch {}
+} else {
+    # PowerShell buffers piped stdin into $input — must use it, not Console::In
+    try {
+        $lines = @($input)
+        if ($lines.Count -gt 0) { $raw = $lines -join "" }
+    } catch {}
+    # Fallback for non-PS callers that write to raw stdin
+    if (-not $raw -and [Console]::IsInputRedirected) {
+        try { $raw = [Console]::In.ReadToEnd() } catch {}
+    }
 }
 
-if (-not $raw -or $raw.Trim() -eq "") { exit 0 }
+$raw = $raw.Trim()
+if (-not $raw) { exit 0 }
 
 $data = $null
 try { $data = $raw | ConvertFrom-Json } catch { exit 0 }
@@ -83,13 +92,13 @@ function Safe-String($val) {
 
 # ── Parse fields ─────────────────────────────────────────────────────────────
 
-$model      = Safe-String (try { $data.model.display_name }                             catch { $null })
-$ctxUsed    = Safe-Double (try { $data.context_window.used_percentage }                 catch { $null })
-$ctxSize    = Safe-Long   (try { $data.context_window.context_window_size }             catch { $null })
-$ctxInput   = Safe-Long   (try { $data.context_window.current_usage.input_tokens }      catch { $null })
-$fivePct    = Safe-Double (try { $data.rate_limits.five_hour.used_percentage }          catch { $null })
-$fiveResets = Safe-Long   (try { $data.rate_limits.five_hour.resets_at }                catch { $null })
-$weekPct    = Safe-Double (try { $data.rate_limits.seven_day.used_percentage }          catch { $null })
+$model      = Safe-String $data.model.display_name
+$ctxUsed    = Safe-Double $data.context_window.used_percentage
+$ctxSize    = Safe-Long   $data.context_window.context_window_size
+$ctxInput   = Safe-Long   $data.context_window.current_usage.input_tokens
+$fivePct    = Safe-Double $data.rate_limits.five_hour.used_percentage
+$fiveResets = Safe-Long   $data.rate_limits.five_hour.resets_at
+$weekPct    = Safe-Double $data.rate_limits.seven_day.used_percentage
 
 if (-not $model) { $model = "Claude" }
 
