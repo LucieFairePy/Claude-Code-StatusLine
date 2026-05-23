@@ -309,17 +309,17 @@ function Invoke-Install {
             Write-Warn "Could not read settings.json raw: $_"
         }
 
-        $settings = $null
+        $settingsObj = $null
         try {
-            $settings = Get-Content $SETTINGS -Raw -Encoding UTF8 | ConvertFrom-Json
+            $settingsObj = [System.IO.File]::ReadAllText($SETTINGS, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
             Write-Ok "settings.json parsed OK."
         } catch {
-            Write-Warn "Could not parse settings.json: $_ — will create fresh."
+            Write-Warn "Could not parse settings.json: $_ -- will create fresh."
         }
-        if (-not $settings) { $settings = [PSCustomObject]@{} }
+        if (-not $settingsObj) { $settingsObj = [PSCustomObject]@{} }
 
-        if ($settings.PSObject.Properties.Name -contains "statusLine") {
-            $existingCmd = try { $settings.statusLine.command } catch { "" }
+        if ($settingsObj.PSObject.Properties.Name -contains "statusLine") {
+            $existingCmd = try { $settingsObj.statusLine.command } catch { "" }
             Write-Info "Existing statusLine command: $existingCmd"
             if ($existingCmd -and $existingCmd -notlike "*statusline-wrapper.ps1*") {
                 Write-Host ""
@@ -334,14 +334,14 @@ function Invoke-Install {
                     return
                 }
             }
-            $settings.statusLine = $statusLineValue
+            $settingsObj.statusLine = $statusLineValue
         } else {
-            Write-Info "No existing statusLine — adding."
-            $settings | Add-Member -NotePropertyName statusLine -NotePropertyValue $statusLineValue
+            Write-Info "No existing statusLine -- adding."
+            $settingsObj | Add-Member -NotePropertyName statusLine -NotePropertyValue $statusLineValue
         }
 
         try {
-            [System.IO.File]::WriteAllBytes($SETTINGS, [System.Text.Encoding]::UTF8.GetBytes(($settings | ConvertTo-Json -Depth 10)))
+            [System.IO.File]::WriteAllBytes($SETTINGS, [System.Text.Encoding]::UTF8.GetBytes(($settingsObj | ConvertTo-Json -Depth 10)))
             Write-Ok "settings.json written (UTF-8 NoBOM)."
         } catch {
             Write-Fail "WriteAllBytes failed: $_"
@@ -446,13 +446,13 @@ function Invoke-Uninstall {
         Write-Ok "Settings backed up: $(Split-Path -Leaf $backup)"
 
         try {
-            $settings = Get-Content $SETTINGS -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($settings.PSObject.Properties.Name -contains "statusLine") {
-                $settings.PSObject.Properties.Remove("statusLine")
-                [System.IO.File]::WriteAllBytes($SETTINGS, [System.Text.Encoding]::UTF8.GetBytes(($settings | ConvertTo-Json -Depth 10)))
+            $settingsObj = [System.IO.File]::ReadAllText($SETTINGS, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+            if ($settingsObj.PSObject.Properties.Name -contains "statusLine") {
+                $settingsObj.PSObject.Properties.Remove("statusLine")
+                [System.IO.File]::WriteAllBytes($SETTINGS, [System.Text.Encoding]::UTF8.GetBytes(($settingsObj | ConvertTo-Json -Depth 10)))
                 Write-Ok "Removed statusLine from settings.json."
             } else {
-                Write-Warn "statusLine not found in settings.json — already removed?"
+                Write-Warn "statusLine not found in settings.json -- already removed?"
             }
         } catch {
             Write-Warn "Could not parse settings.json. Remove the statusLine key manually."
