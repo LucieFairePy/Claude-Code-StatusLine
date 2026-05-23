@@ -71,7 +71,7 @@ if ($Test) {
 $raw = $raw.Trim()
 if (-not $raw) {
     # Emit visible placeholder so a broken stdin pipe is diagnosable in the status bar
-    [Console]::WriteLine("  [StatusLine: no data received — check stdin piping]")
+    [Console]::WriteLine("  [StatusLine: no data received -- check stdin piping]")
     exit 0
 }
 
