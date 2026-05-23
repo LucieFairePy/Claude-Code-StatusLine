@@ -187,10 +187,10 @@ function Invoke-Install {
         }
 
         $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-        [System.IO.File]::WriteAllText($SETTINGS, ($settings | ConvertTo-Json -Depth 10), $utf8NoBom)
+        [System.IO.File]::WriteAllBytes($SETTINGS, $utf8NoBom.GetBytes(($settings | ConvertTo-Json -Depth 10)))
     } else {
         $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-        [System.IO.File]::WriteAllText($SETTINGS, ([PSCustomObject]@{ statusLine = $statusLineValue } | ConvertTo-Json -Depth 10), $utf8NoBom)
+        [System.IO.File]::WriteAllBytes($SETTINGS, $utf8NoBom.GetBytes(([PSCustomObject]@{ statusLine = $statusLineValue } | ConvertTo-Json -Depth 10)))
     }
 
     Write-Ok "settings.json updated."
@@ -234,7 +234,7 @@ function Invoke-Uninstall {
             if ($settings.PSObject.Properties.Name -contains "statusLine") {
                 $settings.PSObject.Properties.Remove("statusLine")
                 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-                [System.IO.File]::WriteAllText($SETTINGS, ($settings | ConvertTo-Json -Depth 10), $utf8NoBom)
+                [System.IO.File]::WriteAllBytes($SETTINGS, $utf8NoBom.GetBytes(($settings | ConvertTo-Json -Depth 10)))
                 Write-Ok "Removed statusLine from settings.json."
             } else {
                 Write-Warn "statusLine not found in settings.json — already removed?"
