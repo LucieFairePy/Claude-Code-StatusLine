@@ -278,7 +278,7 @@ function Invoke-Install {
     Write-Line
 
     Write-Step "Installing statusline-wrapper.ps1"
-    $localPs1 = Join-Path $PSScriptRoot "statusline-wrapper.ps1"
+    $localPs1 = if ($PSScriptRoot) { Join-Path $PSScriptRoot "statusline-wrapper.ps1" } else { "" }
     if (Test-Path $localPs1) {
         Copy-Item $localPs1 $PS1_DEST -Force; Write-Ok "Copied from local clone."
     } else {
@@ -348,8 +348,8 @@ function Invoke-Uninstall {
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 
-$setupJs    = Join-Path $PSScriptRoot "setup.js"
-$nodeReady  = (Test-Path $setupJs) -and (Ensure-Node)
+$setupJs    = if ($PSScriptRoot) { Join-Path $PSScriptRoot "setup.js" } else { "" }
+$nodeReady  = ($setupJs -ne "" -and (Test-Path $setupJs)) -and (Ensure-Node)
 
 if ($Action -eq "") {
     if ($nodeReady) {
@@ -374,11 +374,11 @@ if ($Action -eq "") {
 
 switch ($Action.ToLower()) {
     "install"   {
-        if ($nodeReady) { & node $setupJs install;   exit $LASTEXITCODE }
+        if ($nodeReady -and $setupJs) { & node $setupJs install;   exit $LASTEXITCODE }
         Invoke-Install
     }
     "uninstall" {
-        if ($nodeReady) { & node $setupJs uninstall; exit $LASTEXITCODE }
+        if ($nodeReady -and $setupJs) { & node $setupJs uninstall; exit $LASTEXITCODE }
         Invoke-Uninstall
     }
     default { Write-Host "  Unknown action: $Action" -ForegroundColor Red; exit 1 }
