@@ -217,9 +217,9 @@ function Draw-Preview($opts) {
     Write-Host ("  +" + ("-" * 58) + "+") -ForegroundColor DarkGray
     foreach ($line in $layout) {
         $lineArr = if ($line -is [array]) { $line } else { @($line) }
-        $segs = @($lineArr | Where-Object { $opts.$_ -and $SEGS[$_] } | ForEach-Object { $SEGS[$_] })
-        if ($segs.Count -gt 0) {
-            [Console]::Write("  |  " + ($segs -join "  ${SEP_S}  ") + "`n")
+        $rowSegs = @($lineArr | Where-Object { $opts.$_ -and $SEGS[$_] } | ForEach-Object { $SEGS[$_] })
+        if ($rowSegs.Count -gt 0) {
+            [Console]::Write("  |  " + ($rowSegs -join "  ${SEP_S}  ") + "`n")
             $anyDisplayed = $true
         }
     }
