@@ -7,6 +7,9 @@
     "setup": "node setup.js",
     "uninstall": "node setup.js uninstall"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "inquirer": "^7.3.3"
   }

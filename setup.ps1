@@ -31,18 +31,81 @@ function Write-Banner($title) {
     Write-Host ("  +" + ("-" * $inner) + "+") -ForegroundColor DarkCyan
 }
 
-# ─── TRY NODE FIRST ───────────────────────────────────────────────────────────
+# ─── NODE.JS VERSION CHECK & INSTALL ─────────────────────────────────────────
 
-function Invoke-NodeSetup($action) {
-    $nodeCheck = Get-Command node -ErrorAction SilentlyContinue
-    if (-not $nodeCheck) { return $false }
+$MIN_NODE = 18
 
-    $setupJs = Join-Path $PSScriptRoot "setup.js"
-    if (-not (Test-Path $setupJs)) { return $false }
+function Get-NodeMajor {
+    $cmd = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $cmd) { return -1 }
+    try {
+        $v = & node --version 2>$null
+        if ($v -match 'v(\d+)\.') { return [int]$matches[1] }
+    } catch {}
+    return -1
+}
 
-    $nodeArgs = if ($action) { @($setupJs, $action) } else { @($setupJs) }
-    & node $nodeArgs
-    return $true
+function Refresh-Path {
+    $machine = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+    $user    = [System.Environment]::GetEnvironmentVariable("PATH", "User")
+    $env:PATH = "$machine;$user"
+}
+
+function Ensure-Node {
+    $ver = Get-NodeMajor
+
+    if ($ver -ge $MIN_NODE) { return $true }
+
+    Clear-Screen
+    Write-Host ""
+    Write-Banner "NODE.JS REQUIRED"
+    Write-Host ""
+
+    if ($ver -ge 0) {
+        Write-Warn "Node.js v$ver found — v$MIN_NODE+ required."
+    } else {
+        Write-Warn "Node.js not found."
+    }
+    Write-Host ""
+    Write-Host "  The interactive setup menu requires Node.js $MIN_NODE+." -ForegroundColor DarkGray
+    Write-Host "  Attempting automatic installation..." -ForegroundColor DarkGray
+    Write-Host ""
+
+    # ── Try winget (Windows 10 1709+ built-in) ───────────────────────────────
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if ($winget) {
+        Write-Step "Installing via winget (OpenJS.NodeJS.LTS)..."
+        $r = & winget install OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements 2>&1
+        Refresh-Path
+        $ver = Get-NodeMajor
+        if ($ver -ge $MIN_NODE) { Write-Ok "Node.js v$ver installed via winget."; return $true }
+        Write-Warn "winget install did not produce a usable node."
+    }
+
+    # ── Try Chocolatey ──────────────────────────────────────────────────────
+    $choco = Get-Command choco -ErrorAction SilentlyContinue
+    if ($choco) {
+        Write-Step "Installing via Chocolatey (nodejs-lts)..."
+        & choco install nodejs-lts -y 2>&1 | Out-Null
+        Refresh-Path
+        $ver = Get-NodeMajor
+        if ($ver -ge $MIN_NODE) { Write-Ok "Node.js v$ver installed via Chocolatey."; return $true }
+        Write-Warn "Chocolatey install did not produce a usable node."
+    }
+
+    # ── Manual fallback ─────────────────────────────────────────────────────
+    Write-Host ""
+    Write-Host ("  " + ("-" * 56)) -ForegroundColor DarkGray
+    Write-Host "  Auto-install failed. Please install Node.js manually:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "    https://nodejs.org/en/download  (choose LTS)" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  After installing, re-run this script." -ForegroundColor DarkGray
+    Write-Host ("  " + ("-" * 56)) -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Falling back to the basic PowerShell menu instead." -ForegroundColor Yellow
+    Write-Host ""
+    return $false
 }
 
 # ─── PS TOGGLE MENU (fallback) ────────────────────────────────────────────────
@@ -285,12 +348,11 @@ function Invoke-Uninstall {
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 
-if ($Action -eq "") {
-    # Try Node.js first (rich interactive menu)
-    $nodeAvail = Get-Command node -ErrorAction SilentlyContinue
-    $setupJs   = Join-Path $PSScriptRoot "setup.js"
+$setupJs    = Join-Path $PSScriptRoot "setup.js"
+$nodeReady  = (Test-Path $setupJs) -and (Ensure-Node)
 
-    if ($nodeAvail -and (Test-Path $setupJs)) {
+if ($Action -eq "") {
+    if ($nodeReady) {
         & node $setupJs
         exit $LASTEXITCODE
     }
@@ -312,15 +374,11 @@ if ($Action -eq "") {
 
 switch ($Action.ToLower()) {
     "install"   {
-        $nodeAvail = Get-Command node -ErrorAction SilentlyContinue
-        $setupJs   = Join-Path $PSScriptRoot "setup.js"
-        if ($nodeAvail -and (Test-Path $setupJs)) { & node $setupJs install; exit $LASTEXITCODE }
+        if ($nodeReady) { & node $setupJs install;   exit $LASTEXITCODE }
         Invoke-Install
     }
     "uninstall" {
-        $nodeAvail = Get-Command node -ErrorAction SilentlyContinue
-        $setupJs   = Join-Path $PSScriptRoot "setup.js"
-        if ($nodeAvail -and (Test-Path $setupJs)) { & node $setupJs uninstall; exit $LASTEXITCODE }
+        if ($nodeReady) { & node $setupJs uninstall; exit $LASTEXITCODE }
         Invoke-Uninstall
     }
     default { Write-Host "  Unknown action: $Action" -ForegroundColor Red; exit 1 }

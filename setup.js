@@ -1,5 +1,16 @@
 'use strict';
 
+// ── Node.js version guard ──────────────────────────────────────────────────
+const MIN_NODE = 18;
+const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+if (nodeMajor < MIN_NODE) {
+  process.stdout.write(
+    `\n  \x1b[31mNode.js ${MIN_NODE}+ required — you have ${process.version}.\x1b[0m\n` +
+    `  Install from \x1b[36mhttps://nodejs.org\x1b[0m and re-run.\n\n`
+  );
+  process.exit(1);
+}
+
 // Auto-install deps if needed
 const path = require('path');
 const fs   = require('fs');
