@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 param([string]$Action = "")
 
@@ -151,6 +151,20 @@ function Draw-Menu($opts) {
     $barPrev = ("#" * $f) + ("-" * ($opts.barWidth - $f))
     Write-Host ("    [9]        Bar width  : " + $opts.barWidth + "   [" + $barPrev + "]") -ForegroundColor Cyan
     Write-Host ""
+    Write-Host "  LAYOUT" -ForegroundColor DarkGray
+    Write-Line
+    Write-Host ""
+    $layoutDesc = "default (2 lines)"
+    if ($opts.layout -and $opts.layout.Count -gt 0) {
+        $lineParts = @()
+        foreach ($ln in $opts.layout) {
+            $lArr = if ($ln -is [array]) { $ln } else { @($ln) }
+            $lineParts += "[" + ($lArr -join ",") + "]"
+        }
+        $layoutDesc = "$($opts.layout.Count) line(s) -- " + ($lineParts -join "  ")
+    }
+    Write-Host "    [L]        Layout     : $layoutDesc" -ForegroundColor Cyan
+    Write-Host ""
     Write-Line
     Write-Host "    [N]   Preview and continue" -ForegroundColor Yellow
     Write-Host "    [Q]   Cancel"               -ForegroundColor DarkGray
@@ -177,22 +191,173 @@ function Draw-Preview($opts) {
     function PBar($pct, $bw) { $f = [Math]::Min($bw, [Math]::Max(0, [Math]::Round($pct / 100 * $bw))); ("#" * $f) + ("-" * ($bw - $f)) }
     function PCol($pct) { if ($pct -ge 60) { $GRN } elseif ($pct -ge 30) { $YLW } else { $RED } }
 
-    $l1 = @()
-    if ($opts.showModel)     { $l1 += "${ROBOT} ${CYN}${BOLD}Claude Sonnet 4.6${R}" }
-    if ($opts.showSession)   { $l1 += "${BOLT} $(PCol 60)$(PBar 60 $w) 60%${R}" }
-    if ($opts.showCountdown) { $l1 += "${TIMER} ${DIM}reset 2h 0m${R}" }
+    $compactSeg = $null
+    if ($opts.showCompact -and 82 -ge $opts.compactThreshold) { $compactSeg = "${XWARN}  ${YLW}${BOLD}compact soon${R}" }
+    $weeklySeg = $null
+    if ($opts.showWeekly -and 85 -ge $opts.weeklyThreshold)   { $weeklySeg  = "${CAL} $(PCol 15)$(PBar 15 $w) 15%${R}" }
 
+    $SEGS = @{
+        'showModel'     = "${ROBOT} ${CYN}${BOLD}Claude Sonnet 4.6${R}"
+        'showSession'   = "${BOLT} $(PCol 60)$(PBar 60 $w) 60%${R}"
+        'showCountdown' = "${TIMER} ${DIM}reset 2h 0m${R}"
+        'showContext'   = "${BRAIN} $(PCol 18)$(PBar 18 $w) 18%${R} ${DIM}(36k)${R}"
+        'showCompact'   = $compactSeg
+        'showWeekly'    = $weeklySeg
+    }
+
+    $layout = $opts.layout
+    if (-not $layout -or ($layout -is [array] -and $layout.Count -eq 0)) {
+        $layout = @(
+            @('showModel', 'showSession', 'showCountdown'),
+            @('showContext', 'showCompact', 'showWeekly')
+        )
+    }
+
+    $anyDisplayed = $false
     Write-Host ("  +" + ("-" * 58) + "+") -ForegroundColor DarkGray
-    $l2 = @()
-    if ($opts.showContext) { $l2 += "${BRAIN} $(PCol 18)$(PBar 18 $w) 18%${R} ${DIM}(36k)${R}" }
-    if ($opts.showCompact -and 82 -ge $opts.compactThreshold) { $l2 += "${XWARN}  ${YLW}${BOLD}compact soon${R}" }
-    if ($opts.showWeekly -and 85 -ge $opts.weeklyThreshold) { $l2 += "${CAL} $(PCol 15)$(PBar 15 $w) 15%${R}" }
-
-    if ($l1.Count -gt 0) { [Console]::Write("  |  " + ($l1 -join "  ${SEP_S}  ") + "`n") }
-    if ($l2.Count -gt 0) { [Console]::Write("  |  " + ($l2 -join "  ${SEP_S}  ") + "`n") }
-    if ($l1.Count -eq 0 -and $l2.Count -eq 0) { Write-Host "  |  (nothing to display — all OFF)" -ForegroundColor DarkGray }
+    foreach ($line in $layout) {
+        $lineArr = if ($line -is [array]) { $line } else { @($line) }
+        $segs = @($lineArr | Where-Object { $opts.$_ -and $SEGS[$_] } | ForEach-Object { $SEGS[$_] })
+        if ($segs.Count -gt 0) {
+            [Console]::Write("  |  " + ($segs -join "  ${SEP_S}  ") + "`n")
+            $anyDisplayed = $true
+        }
+    }
+    if (-not $anyDisplayed) { Write-Host "  |  (nothing to display — all OFF)" -ForegroundColor DarkGray }
     Write-Host ("  +" + ("-" * 58) + "+") -ForegroundColor DarkGray
     Write-Host ""
+}
+
+# ─── LAYOUT MENU (PS fallback) ────────────────────────────────────────────────
+
+function Show-LayoutMenu($opts) {
+    $LABELS = @{
+        'showModel'     = 'Model'
+        'showSession'   = 'Session'
+        'showCountdown' = 'Countdown'
+        'showContext'   = 'Context'
+        'showCompact'   = 'Compact'
+        'showWeekly'    = 'Weekly'
+    }
+    $ALL_KEYS = @('showModel','showSession','showCountdown','showContext','showCompact','showWeekly')
+    $enabled  = @($ALL_KEYS | Where-Object { $opts.$_ })
+
+    if ($enabled.Count -eq 0) {
+        Write-Host "  No features enabled." -ForegroundColor Yellow
+        Start-Sleep -Seconds 1
+        return
+    }
+
+    # ── Choose number of lines ──────────────────────────────────────────────
+    $maxL = [Math]::Min(3, $enabled.Count)
+    Clear-Screen; Write-Host ""; Write-Banner "LAYOUT  —  Number of lines"; Write-Host ""
+    Write-Host "  Enabled features: $($enabled.Count)" -ForegroundColor DarkGray
+    Write-Host ""
+    for ($n = 1; $n -le $maxL; $n++) {
+        $suffix = if ($n -gt 1) { "s" } else { "" }
+        Write-Host "  [$n]  $n line$suffix" -ForegroundColor Cyan
+    }
+    Write-Host "  [Q]  Cancel" -ForegroundColor DarkGray
+    Write-Host ""
+
+    $c = (Read-Host "  >").Trim().ToUpper()
+    if ($c -eq "Q") { return }
+    $numLines = 0
+    if (-not ([int]::TryParse($c, [ref]$numLines) -and $numLines -ge 1 -and $numLines -le $maxL)) { return }
+
+    # ── Build layout line by line ───────────────────────────────────────────
+    $layout    = @()
+    $remaining = [System.Collections.ArrayList]@($enabled)
+
+    for ($i = 0; $i -lt $numLines; $i++) {
+        if ($remaining.Count -eq 0) { break }
+        $isLast = ($i -eq $numLines - 1)
+
+        if ($isLast) {
+            # Last line gets remaining features — let user order them
+            if ($remaining.Count -le 1) {
+                $layout += , @($remaining)
+            } else {
+                $ordered   = [System.Collections.ArrayList]@()
+                $toOrder   = [System.Collections.ArrayList]@($remaining)
+                while ($toOrder.Count -gt 0) {
+                    if ($toOrder.Count -eq 1) { [void]$ordered.Add($toOrder[0]); break }
+                    Clear-Screen; Write-Host ""; Write-Banner "LINE $($i+1) of $numLines  —  order"; Write-Host ""
+                    if ($ordered.Count -gt 0) {
+                        Write-Host ("  So far: " + (($ordered | ForEach-Object { $LABELS[$_] }) -join " → ")) -ForegroundColor Green
+                        Write-Host ""
+                    }
+                    Write-Host "  Position $($ordered.Count + 1) — pick next:" -ForegroundColor DarkGray
+                    $toArr = @($toOrder)
+                    for ($j = 0; $j -lt $toArr.Count; $j++) {
+                        Write-Host "  [$($j+1)]  $($LABELS[$toArr[$j]])" -ForegroundColor Cyan
+                    }
+                    Write-Host "  [D]  Keep remaining in current order" -ForegroundColor Yellow
+                    Write-Host ""
+                    $p = (Read-Host "  >").Trim().ToUpper()
+                    if ($p -eq "D") { foreach ($k in $toArr) { [void]$ordered.Add($k) }; break }
+                    $idx = 0
+                    if ([int]::TryParse($p, [ref]$idx) -and $idx -ge 1 -and $idx -le $toArr.Count) {
+                        [void]$ordered.Add($toArr[$idx - 1])
+                        [void]$toOrder.Remove($toArr[$idx - 1])
+                    }
+                }
+                $layout += , @($ordered)
+            }
+            break
+        }
+
+        # Non-last line: pick features one by one in desired order
+        $lineFeats = [System.Collections.ArrayList]@()
+
+        while ($true) {
+            $avail = @($remaining | Where-Object { -not $lineFeats.Contains($_) })
+            if ($avail.Count -eq 0) { break }
+
+            Clear-Screen; Write-Host ""; Write-Banner "LINE $($i+1) of $numLines"; Write-Host ""
+
+            if ($lineFeats.Count -gt 0) {
+                Write-Host ("  Current: " + (($lineFeats | ForEach-Object { $LABELS[$_] }) -join " → ")) -ForegroundColor Green
+                Write-Host ""
+            }
+
+            Write-Host "  Pick features in display order:" -ForegroundColor DarkGray
+            for ($j = 0; $j -lt $avail.Count; $j++) {
+                Write-Host "  [$($j+1)]  $($LABELS[$avail[$j]])" -ForegroundColor Cyan
+            }
+            Write-Host ""
+            if ($lineFeats.Count -ge 1) {
+                Write-Host "  [D]  Done — confirm line $($i+1)" -ForegroundColor Yellow
+            }
+            Write-Host "  [Q]  Cancel layout" -ForegroundColor DarkGray
+            Write-Host ""
+
+            $p = (Read-Host "  >").Trim().ToUpper()
+            if ($p -eq "Q") { return }
+            if ($p -eq "D" -and $lineFeats.Count -ge 1) { break }
+
+            $idx = 0
+            if ([int]::TryParse($p, [ref]$idx) -and $idx -ge 1 -and $idx -le $avail.Count) {
+                [void]$lineFeats.Add($avail[$idx - 1])
+            }
+        }
+
+        if ($lineFeats.Count -gt 0) {
+            $layout += , @($lineFeats)
+            foreach ($k in @($lineFeats)) { [void]$remaining.Remove($k) }
+        }
+    }
+
+    if ($layout.Count -gt 0) { $opts.layout = $layout }
+}
+
+function Build-DefaultLayout($opts) {
+    $allKeys = @('showModel','showSession','showCountdown','showContext','showCompact','showWeekly')
+    $enabled = @($allKeys | Where-Object { $opts.$_ })
+    if ($enabled.Count -eq 0) { return @() }
+    if ($enabled.Count -le 3) { return @(, @($enabled)) }
+    $half = [Math]::Ceiling($enabled.Count / 2)
+    return @(, @($enabled[0..($half-1)]), @($enabled[$half..($enabled.Count-1)]))
 }
 
 function Show-CustomizeMenu {
@@ -213,19 +378,28 @@ function Show-CustomizeMenu {
             foreach ($p in @('showModel','showSession','showCountdown','showContext','showCompact','showWeekly','weeklyThreshold','compactThreshold','barWidth')) {
                 if ($ex.PSObject.Properties.Name -contains $p) { $opts.$p = $ex.$p }
             }
+            # Load layout: convert JSON arrays back to PS arrays
+            if ($ex.PSObject.Properties.Name -contains 'layout' -and $ex.layout) {
+                $opts.layout = @($ex.layout | ForEach-Object { , @($_ | ForEach-Object { "$_" }) })
+            }
         } catch {}
+    }
+
+    # Build default layout if none loaded
+    if (-not $opts.layout -or $opts.layout.Count -eq 0) {
+        $opts.layout = Build-DefaultLayout $opts
     }
 
     while ($true) {
         Draw-Menu $opts
         $c = (Read-Host "  >").Trim().ToUpper()
         switch ($c) {
-            "1" { $opts.showModel     = -not $opts.showModel }
-            "2" { $opts.showSession   = -not $opts.showSession }
-            "3" { $opts.showCountdown = -not $opts.showCountdown }
-            "4" { $opts.showContext   = -not $opts.showContext }
-            "5" { $opts.showCompact   = -not $opts.showCompact }
-            "6" { $opts.showWeekly    = -not $opts.showWeekly }
+            "1" { $opts.showModel     = -not $opts.showModel;     $opts.layout = Build-DefaultLayout $opts }
+            "2" { $opts.showSession   = -not $opts.showSession;   $opts.layout = Build-DefaultLayout $opts }
+            "3" { $opts.showCountdown = -not $opts.showCountdown; $opts.layout = Build-DefaultLayout $opts }
+            "4" { $opts.showContext   = -not $opts.showContext;    $opts.layout = Build-DefaultLayout $opts }
+            "5" { $opts.showCompact   = -not $opts.showCompact;   $opts.layout = Build-DefaultLayout $opts }
+            "6" { $opts.showWeekly    = -not $opts.showWeekly;    $opts.layout = Build-DefaultLayout $opts }
             "7" {
                 if ($opts.showWeekly) {
                     $idx = [Array]::IndexOf($WEEKLY_THRESHOLDS, [int]$opts.weeklyThreshold)
@@ -245,6 +419,7 @@ function Show-CustomizeMenu {
                 if ($idx -lt 0) { $idx = 0 }
                 $opts.barWidth = $BAR_WIDTHS[($idx + 1) % $BAR_WIDTHS.Length]
             }
+            "L" { Show-LayoutMenu $opts }
             "N" {
                 Draw-Preview $opts
                 $confirm = (Read-Host "  Apply? [Y / any key = back]").Trim().ToUpper()

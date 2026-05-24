@@ -307,9 +307,9 @@ async function runWizard() {
       name:    'numLines',
       message: 'How many lines for your status bar?',
       choices: [
-        { name: '1 line   — all features on one row',              value: 1 },
-        { name: '2 lines  — split into two rows  (default)',        value: 2 },
-        { name: '3 lines  — three rows',                            value: 3 },
+        { name: '1 line   — all features on one row',       value: 1 },
+        { name: '2 lines  — split into two rows  (default)', value: 2 },
+        { name: '3 lines  — three rows',                     value: 3 },
       ],
       default: Math.min(3, Math.max(1, opts.layout.length)),
     }]);
@@ -319,7 +319,46 @@ async function runWizard() {
     let remaining   = [...enabledKeys];
 
     if (numLines === 1) {
-      newLayout.push([...enabledKeys]);
+      // Single line: pick features one by one to set display order
+      const ordered = [];
+      let picking = true;
+      while (picking) {
+        const avail = remaining.filter(k => !ordered.includes(k));
+        if (avail.length === 0) break;
+
+        const previewLayout = [ordered.length > 0 ? [...ordered, ...avail] : [...avail]];
+        screen({ ...opts, layout: previewLayout }, 'Step 3 / 4  —  Layout  (1 line)');
+
+        if (ordered.length > 0) {
+          const soFar = ordered.map(k => FEATURES.find(f => f.key === k).short).join(' → ');
+          console.log(`  ${GRN}Order so far: ${soFar}${R}\n`);
+        }
+        console.log(`  ${DIM}Pick features in the order you want them displayed.${R}\n`);
+
+        const choices = avail.map(k => {
+          const f = FEATURES.find(x => x.key === k);
+          return { name: `${f.icon}  ${f.label}`, value: k };
+        });
+        if (ordered.length >= 1) {
+          choices.push(new inquirer.Separator());
+          choices.push({ name: `✓  Done — confirm order`, value: '__done__' });
+        }
+
+        const pick = await inquirer.prompt([{
+          type:    'list',
+          name:    'feat',
+          message: ordered.length === 0 ? 'First feature (leftmost):' : 'Add next or confirm:',
+          choices,
+        }]);
+
+        if (pick.feat === '__done__') {
+          picking = false;
+        } else {
+          ordered.push(pick.feat);
+        }
+      }
+      newLayout.push(ordered.length > 0 ? ordered : [...enabledKeys]);
+
     } else {
       for (let i = 0; i < numLines; i++) {
         if (remaining.length === 0) break;
@@ -327,26 +366,56 @@ async function runWizard() {
         const isLast = i === numLines - 1;
         if (isLast) { newLayout.push([...remaining]); break; }
 
-        // Preview: confirmed lines + remaining as tentative next line
-        const previewLayout = [...newLayout, [...remaining]];
-        screen({ ...opts, layout: previewLayout }, `Step 3 / 4  —  Line ${i + 1} of ${numLines}`);
-        console.log(`  ${DIM}Choose which features go on line ${i + 1}. The rest will fill the next line(s).${R}\n`);
+        // Pick features for this line one at a time — selection order = display order
+        const lineFeatures = [];
+        let picking = true;
 
-        const prevLine = (opts.layout[i] || []).filter(k => remaining.includes(k));
+        while (picking) {
+          const avail = remaining.filter(k => !lineFeatures.includes(k));
+          if (avail.length === 0) break;
 
-        const s3b = await inquirer.prompt([{
-          type:     'checkbox',
-          name:     'line',
-          message:  `Line ${i + 1} — select features  (order here = display order):`,
-          choices:  remaining.map(k => {
+          const previewLayout = [
+            ...newLayout,
+            lineFeatures.length > 0 ? [...lineFeatures, ...avail] : [...avail],
+          ];
+          screen({ ...opts, layout: previewLayout },
+            `Step 3 / 4  —  Line ${i + 1} of ${numLines}`);
+
+          if (lineFeatures.length > 0) {
+            const soFar = lineFeatures.map(k => FEATURES.find(f => f.key === k).short).join(' → ');
+            console.log(`  ${GRN}Line ${i + 1} so far: ${soFar}${R}\n`);
+          }
+          console.log(`  ${DIM}Pick features in the order you want them displayed.${R}\n`);
+
+          const choices = avail.map(k => {
             const f = FEATURES.find(x => x.key === k);
-            return { name: `${f.icon}  ${f.label}`, value: k, checked: prevLine.includes(k) };
-          }),
-          validate: ans => ans.length > 0 || 'Pick at least one feature for this line.',
-        }]);
+            return { name: `${f.icon}  ${f.label}`, value: k };
+          });
+          if (lineFeatures.length >= 1) {
+            choices.push(new inquirer.Separator());
+            choices.push({ name: `✓  Done — confirm line ${i + 1}`, value: '__done__' });
+          }
 
-        newLayout.push(s3b.line);
-        remaining = remaining.filter(k => !s3b.line.includes(k));
+          const pick = await inquirer.prompt([{
+            type:    'list',
+            name:    'feat',
+            message: lineFeatures.length === 0
+              ? `Line ${i + 1} — first feature:`
+              : `Line ${i + 1} — add next or confirm:`,
+            choices,
+          }]);
+
+          if (pick.feat === '__done__') {
+            picking = false;
+          } else {
+            lineFeatures.push(pick.feat);
+          }
+        }
+
+        if (lineFeatures.length > 0) {
+          newLayout.push(lineFeatures);
+          remaining = remaining.filter(k => !lineFeatures.includes(k));
+        }
       }
     }
 
