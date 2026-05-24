@@ -40,14 +40,15 @@ function Cfg-Int($key, $default) {
     $default
 }
 
-$showModel       = Cfg-Bool 'showModel'       $true
-$showSession     = Cfg-Bool 'showSession'     $true
-$showCountdown   = Cfg-Bool 'showCountdown'   $true
-$showContext     = Cfg-Bool 'showContext'     $true
-$showCompact     = Cfg-Bool 'showCompact'     $true
-$showWeekly      = Cfg-Bool 'showWeekly'      $true
-$weeklyThreshold = Cfg-Int  'weeklyThreshold' 80
-$barWidth        = Cfg-Int  'barWidth'        8
+$showModel        = Cfg-Bool 'showModel'        $true
+$showSession      = Cfg-Bool 'showSession'      $true
+$showCountdown    = Cfg-Bool 'showCountdown'    $true
+$showContext      = Cfg-Bool 'showContext'      $true
+$showCompact      = Cfg-Bool 'showCompact'      $true
+$showWeekly       = Cfg-Bool 'showWeekly'       $true
+$weeklyThreshold  = Cfg-Int  'weeklyThreshold'  80
+$compactThreshold = Cfg-Int  'compactThreshold' 80
+$barWidth         = Cfg-Int  'barWidth'         8
 
 # Layout: array of arrays of feature keys, defines lines and order
 # Default: line1 = model+session+countdown, line2 = context+compact+weekly
@@ -199,7 +200,7 @@ function Build-Segment($key) {
         }
         'showCompact' {
             if (-not $showCompact) { return $null }
-            if ($null -ne $ctxUsed -and $ctxUsed -ge 80) {
+            if ($null -ne $ctxUsed -and $ctxUsed -ge $compactThreshold) {
                 return "${E_WARN}  ${YELLOW}${BOLD}compact soon${RESET}"
             }
             return $null

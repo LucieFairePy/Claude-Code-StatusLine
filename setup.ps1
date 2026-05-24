@@ -129,7 +129,13 @@ function Draw-Menu($opts) {
     Write-Line
     Write-Host ""
     Write-Host ("    [4]  " + (Toggle-Label $opts.showContext)   + "   Context window")       -ForegroundColor (Toggle-Color $opts.showContext)
-    Write-Host ("    [5]  " + (Toggle-Label $opts.showCompact)   + "   Compact warning (>80%)") -ForegroundColor (Toggle-Color $opts.showCompact)
+    Write-Host ("    [5]  " + (Toggle-Label $opts.showCompact)   + "   Compact warning")      -ForegroundColor (Toggle-Color $opts.showCompact)
+    if ($opts.showCompact) {
+        $cLabel = if ($opts.compactThreshold -eq 0) { "Always visible" } else { "From $($opts.compactThreshold)% used" }
+        Write-Host "    [8]        Visibility : $cLabel" -ForegroundColor Cyan
+    } else {
+        Write-Host "    [8]        (enable compact to configure)" -ForegroundColor DarkGray
+    }
     Write-Host ("    [6]  " + (Toggle-Label $opts.showWeekly)    + "   Weekly usage")         -ForegroundColor (Toggle-Color $opts.showWeekly)
     if ($opts.showWeekly) {
         $tLabel = if ($opts.weeklyThreshold -eq 0) { "Always visible" } else { "From $($opts.weeklyThreshold)% usage" }
@@ -143,7 +149,7 @@ function Draw-Menu($opts) {
     Write-Host ""
     $f = [Math]::Min($opts.barWidth, [Math]::Max(0, [Math]::Round(65 / 100 * $opts.barWidth)))
     $barPrev = ("#" * $f) + ("-" * ($opts.barWidth - $f))
-    Write-Host ("    [8]        Bar width  : " + $opts.barWidth + "   [" + $barPrev + "]") -ForegroundColor Cyan
+    Write-Host ("    [9]        Bar width  : " + $opts.barWidth + "   [" + $barPrev + "]") -ForegroundColor Cyan
     Write-Host ""
     Write-Line
     Write-Host "    [N]   Preview and continue" -ForegroundColor Yellow
@@ -176,12 +182,12 @@ function Draw-Preview($opts) {
     if ($opts.showSession)   { $l1 += "${BOLT} $(PCol 60)$(PBar 60 $w) 60%${R}" }
     if ($opts.showCountdown) { $l1 += "${TIMER} ${DIM}reset 2h 0m${R}" }
 
+    Write-Host ("  +" + ("-" * 58) + "+") -ForegroundColor DarkGray
     $l2 = @()
     if ($opts.showContext) { $l2 += "${BRAIN} $(PCol 18)$(PBar 18 $w) 18%${R} ${DIM}(36k)${R}" }
-    if ($opts.showCompact) { $l2 += "${XWARN}  ${YLW}${BOLD}compact soon${R}" }
+    if ($opts.showCompact -and 82 -ge $opts.compactThreshold) { $l2 += "${XWARN}  ${YLW}${BOLD}compact soon${R}" }
     if ($opts.showWeekly -and 85 -ge $opts.weeklyThreshold) { $l2 += "${CAL} $(PCol 15)$(PBar 15 $w) 15%${R}" }
 
-    Write-Host ("  +" + ("-" * 58) + "+") -ForegroundColor DarkGray
     if ($l1.Count -gt 0) { [Console]::Write("  |  " + ($l1 -join "  ${SEP_S}  ") + "`n") }
     if ($l2.Count -gt 0) { [Console]::Write("  |  " + ($l2 -join "  ${SEP_S}  ") + "`n") }
     if ($l1.Count -eq 0 -and $l2.Count -eq 0) { Write-Host "  |  (nothing to display — all OFF)" -ForegroundColor DarkGray }
@@ -190,20 +196,21 @@ function Draw-Preview($opts) {
 }
 
 function Show-CustomizeMenu {
-    $BAR_WIDTHS        = @(6, 8, 10, 12)
-    $WEEKLY_THRESHOLDS = @(0, 50, 60, 70, 80, 90)
+    $BAR_WIDTHS          = @(6, 8, 10, 12)
+    $WEEKLY_THRESHOLDS   = @(0, 50, 60, 70, 80, 90)
+    $COMPACT_THRESHOLDS  = @(0, 50, 60, 70, 80, 90)
 
     $opts = [PSCustomObject]@{
         showModel = $true; showSession = $true; showCountdown = $true
         showContext = $true; showCompact = $true; showWeekly = $true
-        weeklyThreshold = 80; barWidth = 8
+        weeklyThreshold = 80; compactThreshold = 80; barWidth = 8
         layout = $null
     }
 
     if (Test-Path $CFG_FILE) {
         try {
             $ex = Get-Content $CFG_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
-            foreach ($p in @('showModel','showSession','showCountdown','showContext','showCompact','showWeekly','weeklyThreshold','barWidth')) {
+            foreach ($p in @('showModel','showSession','showCountdown','showContext','showCompact','showWeekly','weeklyThreshold','compactThreshold','barWidth')) {
                 if ($ex.PSObject.Properties.Name -contains $p) { $opts.$p = $ex.$p }
             }
         } catch {}
@@ -227,6 +234,13 @@ function Show-CustomizeMenu {
                 }
             }
             "8" {
+                if ($opts.showCompact) {
+                    $idx = [Array]::IndexOf($COMPACT_THRESHOLDS, [int]$opts.compactThreshold)
+                    if ($idx -lt 0) { $idx = 0 }
+                    $opts.compactThreshold = $COMPACT_THRESHOLDS[($idx + 1) % $COMPACT_THRESHOLDS.Length]
+                }
+            }
+            "9" {
                 $idx = [Array]::IndexOf($BAR_WIDTHS, [int]$opts.barWidth)
                 if ($idx -lt 0) { $idx = 0 }
                 $opts.barWidth = $BAR_WIDTHS[($idx + 1) % $BAR_WIDTHS.Length]
@@ -278,12 +292,17 @@ function Invoke-Install {
     Write-Line
 
     Write-Step "Installing statusline-wrapper.ps1"
-    $localPs1 = if ($PSScriptRoot) { Join-Path $PSScriptRoot "statusline-wrapper.ps1" } else { "" }
+    $localPs1 = if ($PSScriptRoot -and $PSScriptRoot -ne "") { Join-Path $PSScriptRoot "statusline-wrapper.ps1" } else { "" }
     if ($localPs1 -ne "" -and (Test-Path $localPs1)) {
         Copy-Item $localPs1 $PS1_DEST -Force; Write-Ok "Copied from local clone."
     } else {
         $url = "https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/statusline-wrapper.ps1"
-        Invoke-WebRequest $url -OutFile $PS1_DEST -UseBasicParsing | Out-Null; Write-Ok "Downloaded."
+        try {
+            (New-Object System.Net.WebClient).DownloadFile($url, $PS1_DEST)
+            Write-Ok "Downloaded."
+        } catch {
+            Write-Fail "Download failed: $_"
+        }
     }
     try { Unblock-File $PS1_DEST -ErrorAction Stop; Write-Ok "Unblocked." } catch { Write-Warn "Unblock failed — proceeding." }
     Write-Line

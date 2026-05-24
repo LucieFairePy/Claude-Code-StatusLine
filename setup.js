@@ -58,7 +58,7 @@ const FEATURES = [
   { key: 'showSession',   icon: E.bolt,  label: 'Session usage  (5h)',     short: 'Session'   },
   { key: 'showCountdown', icon: E.timer, label: 'Reset countdown',         short: 'Countdown' },
   { key: 'showContext',   icon: E.brain, label: 'Context window',          short: 'Context'   },
-  { key: 'showCompact',   icon: E.warn,  label: 'Compact warning  (>80%)', short: 'Compact'   },
+  { key: 'showCompact',   icon: E.warn,  label: 'Compact warning',         short: 'Compact'   },
   { key: 'showWeekly',    icon: E.cal,   label: 'Weekly usage',            short: 'Weekly'    },
 ];
 
@@ -112,12 +112,12 @@ function buildSeg(key, w, threshold) {
       return `${E.brain} ${barColor(SAMPLE.ctxLeft)}${makeBar(SAMPLE.ctxLeft, w)} ${SAMPLE.ctxLeft}%${R} ${DIM}(${fmtRemain(SAMPLE.ctxRemain)})${R}`;
 
     case 'showCompact':
-      return SAMPLE.ctxLeft <= 20
+      return SAMPLE.ctxLeft <= (100 - threshold.compact)
         ? `${E.warn}  ${YLW}${BOLD}compact soon${R}`
         : null;
 
     case 'showWeekly':
-      return SAMPLE.weekUsed >= threshold
+      return SAMPLE.weekUsed >= threshold.weekly
         ? `${E.cal} ${barColor(SAMPLE.weekLeft)}${makeBar(SAMPLE.weekLeft, w)} ${SAMPLE.weekLeft}%${R}`
         : null;
 
@@ -129,7 +129,10 @@ function buildSeg(key, w, threshold) {
 function renderPreview(opts) {
   const SEP = `${DIM}|${R}`;
   const w   = opts.barWidth || 8;
-  const thr = opts.weeklyThreshold !== undefined ? opts.weeklyThreshold : 80;
+  const thr = {
+    weekly:  opts.weeklyThreshold  !== undefined ? opts.weeklyThreshold  : 80,
+    compact: opts.compactThreshold !== undefined ? opts.compactThreshold : 80,
+  };
   const layout = (opts.layout && opts.layout.length > 0) ? opts.layout : DEFAULT_LAYOUT;
 
   const renderedLines = layout
@@ -208,15 +211,16 @@ async function runWizard() {
   const existing = loadExisting();
 
   const opts = {
-    showModel:       ex(existing, 'showModel',       true),
-    showSession:     ex(existing, 'showSession',     true),
-    showCountdown:   ex(existing, 'showCountdown',   true),
-    showContext:     ex(existing, 'showContext',      true),
-    showCompact:     ex(existing, 'showCompact',      true),
-    showWeekly:      ex(existing, 'showWeekly',       true),
-    weeklyThreshold: ex(existing, 'weeklyThreshold',  80),
-    barWidth:        ex(existing, 'barWidth',          8),
-    layout:          ex(existing, 'layout',           DEFAULT_LAYOUT),
+    showModel:        ex(existing, 'showModel',        true),
+    showSession:      ex(existing, 'showSession',      true),
+    showCountdown:    ex(existing, 'showCountdown',    true),
+    showContext:      ex(existing, 'showContext',       true),
+    showCompact:      ex(existing, 'showCompact',       true),
+    showWeekly:       ex(existing, 'showWeekly',        true),
+    weeklyThreshold:  ex(existing, 'weeklyThreshold',   80),
+    compactThreshold: ex(existing, 'compactThreshold',  80),
+    barWidth:         ex(existing, 'barWidth',           8),
+    layout:           ex(existing, 'layout',            DEFAULT_LAYOUT),
   };
 
   // ── Step 1: Features ─────────────────────────────────────────────────────
@@ -265,6 +269,30 @@ async function runWizard() {
     }]);
 
     opts.weeklyThreshold = parseInt(s2.weeklyThreshold, 10);
+  }
+
+  // ── Step 2b: Compact threshold ────────────────────────────────────────────
+
+  if (opts.showCompact) {
+    screen(opts, 'Step 2 / 4  —  Compact visibility');
+
+    const s2b = await inquirer.prompt([{
+      type:    'list',
+      name:    'compactThreshold',
+      message: 'Show compact warning when context used:',
+      default: String(opts.compactThreshold),
+      choices: [
+        { name: 'Always visible', value: '0' },
+        new inquirer.Separator(),
+        { name: 'From 50% used', value: '50' },
+        { name: 'From 60% used', value: '60' },
+        { name: 'From 70% used', value: '70' },
+        { name: 'From 80% used  (default)', value: '80' },
+        { name: 'From 90% used', value: '90' },
+      ],
+    }]);
+
+    opts.compactThreshold = parseInt(s2b.compactThreshold, 10);
   }
 
   // ── Step 3: Layout ────────────────────────────────────────────────────────
