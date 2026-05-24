@@ -542,7 +542,22 @@ function Invoke-Uninstall {
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 
-$setupJs    = if ($PSScriptRoot) { Join-Path $PSScriptRoot "setup.js" } else { "" }
+$setupJs = if ($PSScriptRoot -and $PSScriptRoot -ne "") { Join-Path $PSScriptRoot "setup.js" } else { "" }
+
+# When running via irm|iex (no PSScriptRoot), download the Node setup files to a temp dir
+if ($setupJs -eq "" -or -not (Test-Path $setupJs)) {
+    $tmpDir = Join-Path $env:TEMP "claude-statusline-setup"
+    if (-not (Test-Path $tmpDir)) { New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null }
+    $base = "https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main"
+    $dlOk = $true
+    foreach ($fname in @("setup.js", "statusline-wrapper.ps1", "package.json")) {
+        try {
+            (New-Object System.Net.WebClient).DownloadFile("$base/$fname", (Join-Path $tmpDir $fname))
+        } catch { $dlOk = $false; break }
+    }
+    $setupJs = if ($dlOk) { Join-Path $tmpDir "setup.js" } else { "" }
+}
+
 $nodeReady  = ($setupJs -ne "" -and (Test-Path $setupJs)) -and (Ensure-Node)
 
 if ($Action -eq "") {

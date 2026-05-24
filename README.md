@@ -51,7 +51,9 @@ Open **PowerShell** and run:
 irm https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/setup.ps1 | iex
 ```
 
-A setup wizard appears. Choose **[1] Install**, walk through the steps, and restart Claude Code when done.
+If [Node.js 18+](https://nodejs.org) is available, the interactive wizard launches automatically. Otherwise a simpler PowerShell menu is used — both produce the same result.
+
+Choose **[1] Install**, walk through the steps, and restart Claude Code when done.
 
 To reconfigure at any time, re-run and choose **[1] Install** again — your previous settings are pre-filled.
 
