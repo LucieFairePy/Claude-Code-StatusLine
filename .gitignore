@@ -9,5 +9,9 @@ desktop.ini
 # Backup files created by installer
 *.backup_*
 
+# Node
+node_modules/
+package-lock.json
+
 # Assets placeholder (add real screenshots)
 assets/.gitkeep

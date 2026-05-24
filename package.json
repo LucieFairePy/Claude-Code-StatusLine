@@ -1,0 +1,13 @@
+{
+  "name": "claude-statusline-setup",
+  "version": "1.0.0",
+  "description": "Interactive setup for Claude Code status bar",
+  "main": "setup.js",
+  "scripts": {
+    "setup": "node setup.js",
+    "uninstall": "node setup.js uninstall"
+  },
+  "dependencies": {
+    "inquirer": "^7.3.3"
+  }
+}

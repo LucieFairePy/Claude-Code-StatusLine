@@ -16,12 +16,12 @@ $GREEN  = "${ESC}[32m"
 $RED    = "${ESC}[31m"
 $SEP    = "${DIM}|${RESET}"
 
-$E_ROBOT = [char]::ConvertFromUtf32(0x1F916)  # 🤖
-$E_BOLT  = [char]::ConvertFromUtf32(0x26A1)   # ⚡
-$E_TIMER = [char]::ConvertFromUtf32(0x23F3)   # ⏳
-$E_BRAIN = [char]::ConvertFromUtf32(0x1F9E0)  # 🧠
-$E_WARN  = [char]::ConvertFromUtf32(0x26A0)   # ⚠
-$E_CAL   = [char]::ConvertFromUtf32(0x1F4C5)  # 📅
+$E_ROBOT = [char]::ConvertFromUtf32(0x1F916)
+$E_BOLT  = [char]::ConvertFromUtf32(0x26A1)
+$E_TIMER = [char]::ConvertFromUtf32(0x23F3)
+$E_BRAIN = [char]::ConvertFromUtf32(0x1F9E0)
+$E_WARN  = [char]::ConvertFromUtf32(0x26A0)
+$E_CAL   = [char]::ConvertFromUtf32(0x1F4C5)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,24 @@ $showCompact     = Cfg-Bool 'showCompact'     $true
 $showWeekly      = Cfg-Bool 'showWeekly'      $true
 $weeklyThreshold = Cfg-Int  'weeklyThreshold' 80
 $barWidth        = Cfg-Int  'barWidth'        8
+
+# Layout: array of arrays of feature keys, defines lines and order
+# Default: line1 = model+session+countdown, line2 = context+compact+weekly
+$layout = $null
+if ($cfg -and $cfg.PSObject.Properties.Name -contains 'layout') {
+    try {
+        $rawLayout = $cfg.layout
+        if ($rawLayout -and $rawLayout.Count -gt 0) {
+            $layout = @($rawLayout | ForEach-Object { @($_ | ForEach-Object { [string]$_ }) })
+        }
+    } catch {}
+}
+if (-not $layout) {
+    $layout = @(
+        @('showModel','showSession','showCountdown'),
+        @('showContext','showCompact','showWeekly')
+    )
+}
 
 # ── Read JSON ─────────────────────────────────────────────────────────────────
 
@@ -125,63 +143,88 @@ if ($fiveResets -and $fiveResets -gt 0) {
     } catch {}
 }
 
-# ── Line 1: model + session + countdown ───────────────────────────────────────
+# ── Context remaining — precise format ────────────────────────────────────────
 
-$l1 = @()
-
-if ($showModel) {
-    $l1 += "${E_ROBOT} ${CYAN}${BOLD}${model}${RESET}"
-}
-
-if ($showSession) {
-    if ($null -ne $fivePct) {
-        $left = [Math]::Round(100 - $fivePct)
-        $l1 += "${E_BOLT} $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
+$ctxRem = ""
+if ($null -ne $ctxSize -and $null -ne $ctxUsed) {
+    $r = [Math]::Max(0, [long]($ctxSize * (100 - $ctxUsed) / 100))
+    if ($r -ge 10000) {
+        $ctxRem = " ${DIM}($([Math]::Round($r / 1000))k)${RESET}"
+    } elseif ($r -ge 1000) {
+        $rk = [Math]::Round($r / 100) / 10
+        $ctxRem = " ${DIM}($($rk.ToString('F1'))k)${RESET}"
     } else {
-        $l1 += "${E_BOLT} ${DIM}$('-' * $barWidth)${RESET}"
+        $ctxRem = " ${DIM}(${r})${RESET}"
+    }
+} elseif ($null -ne $ctxSize -and $null -ne $ctxInput) {
+    $r = [Math]::Max(0, $ctxSize - $ctxInput)
+    if ($r -ge 10000) {
+        $ctxRem = " ${DIM}($([Math]::Round($r / 1000))k)${RESET}"
+    } elseif ($r -ge 1000) {
+        $rk = [Math]::Round($r / 100) / 10
+        $ctxRem = " ${DIM}($($rk.ToString('F1'))k)${RESET}"
+    } else {
+        $ctxRem = " ${DIM}(${r})${RESET}"
     }
 }
 
-if ($showCountdown -and $countdown) {
-    if ($countdown -eq "now!") {
-        $l1 += "${E_TIMER} ${RED}${BOLD}reset now!${RESET}"
-    } else {
-        $l1 += "${E_TIMER} ${DIM}reset ${countdown}${RESET}"
-    }
-}
+# ── Segment builder ───────────────────────────────────────────────────────────
 
-$line1 = if ($l1.Count -gt 0) { "  " + ($l1 -join "  ${SEP}  ") } else { "" }
-
-# ── Line 2: context + warnings ────────────────────────────────────────────────
-
-$l2 = @()
-
-if ($showContext) {
-    if ($null -ne $ctxUsed) {
-        $left = [Math]::Round(100 - $ctxUsed)
-        $rem  = ""
-        if ($null -ne $ctxSize -and $null -ne $ctxInput) {
-            $r   = [Math]::Max(0, $ctxSize - $ctxInput)
-            $rem = if ($r -ge 1000) { " ${DIM}($([Math]::Round($r / 1000))k)${RESET}" } else { " ${DIM}(${r})${RESET}" }
+function Build-Segment($key) {
+    switch ($key) {
+        'showModel' {
+            if (-not $showModel) { return $null }
+            return "${E_ROBOT} ${CYAN}${BOLD}${model}${RESET}"
         }
-        $l2 += "${E_BRAIN} $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}${rem}"
-    } else {
-        $l2 += "${E_BRAIN} ${DIM}$('-' * $barWidth)${RESET}"
+        'showSession' {
+            if (-not $showSession) { return $null }
+            if ($null -ne $fivePct) {
+                $left = [Math]::Round(100 - $fivePct)
+                return "${E_BOLT} $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
+            }
+            return "${E_BOLT} ${DIM}$('-' * $barWidth)${RESET}"
+        }
+        'showCountdown' {
+            if (-not $showCountdown -or -not $countdown) { return $null }
+            if ($countdown -eq "now!") { return "${E_TIMER} ${RED}${BOLD}reset now!${RESET}" }
+            return "${E_TIMER} ${DIM}reset ${countdown}${RESET}"
+        }
+        'showContext' {
+            if (-not $showContext) { return $null }
+            if ($null -ne $ctxUsed) {
+                $left = [Math]::Round(100 - $ctxUsed)
+                return "${E_BRAIN} $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}${ctxRem}"
+            }
+            return "${E_BRAIN} ${DIM}$('-' * $barWidth)${RESET}"
+        }
+        'showCompact' {
+            if (-not $showCompact) { return $null }
+            if ($null -ne $ctxUsed -and $ctxUsed -ge 80) {
+                return "${E_WARN}  ${YELLOW}${BOLD}compact soon${RESET}"
+            }
+            return $null
+        }
+        'showWeekly' {
+            if (-not $showWeekly) { return $null }
+            if ($null -ne $weekPct -and [Math]::Round($weekPct) -ge $weeklyThreshold) {
+                $left = [Math]::Round(100 - $weekPct)
+                return "${E_CAL} $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
+            }
+            return $null
+        }
+    }
+    return $null
+}
+
+# ── Build and output lines ────────────────────────────────────────────────────
+
+foreach ($lineKeys in $layout) {
+    $parts = @()
+    foreach ($key in $lineKeys) {
+        $seg = Build-Segment $key
+        if ($seg) { $parts += $seg }
+    }
+    if ($parts.Count -gt 0) {
+        [Console]::WriteLine("  " + ($parts -join "  ${SEP}  "))
     }
 }
-
-if ($showCompact -and $null -ne $ctxUsed -and $ctxUsed -ge 80) {
-    $l2 += "${E_WARN}  ${YELLOW}${BOLD}compact soon${RESET}"
-}
-
-if ($showWeekly -and $null -ne $weekPct -and [Math]::Round($weekPct) -ge $weeklyThreshold) {
-    $left = [Math]::Round(100 - $weekPct)
-    $l2 += "${E_CAL} $(Get-Color $left)$(Make-Bar $left $barWidth) ${left}%${RESET}"
-}
-
-$line2 = if ($l2.Count -gt 0) { "  " + ($l2 -join "  ${SEP}  ") } else { "" }
-
-# ── Output ────────────────────────────────────────────────────────────────────
-
-if ($line1) { [Console]::WriteLine($line1) }
-if ($line2) { [Console]::WriteLine($line2) }
