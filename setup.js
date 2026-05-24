@@ -352,6 +352,9 @@ async function runWizard() {
         }]);
 
         if (pick.feat === '__done__') {
+          // append remaining in default order so nothing is lost
+          const unpicked = avail.filter(k => !ordered.includes(k));
+          ordered.push(...unpicked);
           picking = false;
         } else {
           ordered.push(pick.feat);
