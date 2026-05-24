@@ -279,7 +279,7 @@ function Invoke-Install {
 
     Write-Step "Installing statusline-wrapper.ps1"
     $localPs1 = if ($PSScriptRoot) { Join-Path $PSScriptRoot "statusline-wrapper.ps1" } else { "" }
-    if (Test-Path $localPs1) {
+    if ($localPs1 -ne "" -and (Test-Path $localPs1)) {
         Copy-Item $localPs1 $PS1_DEST -Force; Write-Ok "Copied from local clone."
     } else {
         $url = "https://raw.githubusercontent.com/LucieFairePy/Claude-Code-StatusLine/main/statusline-wrapper.ps1"
