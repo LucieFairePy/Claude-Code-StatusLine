@@ -57,7 +57,9 @@ if ($cfg -and $cfg.PSObject.Properties.Name -contains 'layout') {
     try {
         $rawLayout = $cfg.layout
         if ($rawLayout -and $rawLayout.Count -gt 0) {
-            $layout = @($rawLayout | ForEach-Object { @($_ | ForEach-Object { [string]$_ }) })
+            $tmp = [System.Collections.ArrayList]::new()
+            foreach ($row in $rawLayout) { [void]$tmp.Add(@($row | ForEach-Object { [string]$_ })) }
+            $layout = $tmp.ToArray()
         }
     } catch {}
 }
